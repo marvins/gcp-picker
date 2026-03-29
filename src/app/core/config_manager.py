@@ -32,7 +32,7 @@ class Map_Settings:
     default_zoom: int
     min_zoom: int
     max_zoom: int
-    default_service: str = "NAIP CONUS (ArcGIS)"
+    default_service: str = "Esri World Imagery"
 
 
 @dataclass

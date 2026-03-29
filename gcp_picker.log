@@ -126,3 +126,15 @@
 2026-03-29 10:34:23,584 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:79 - __init__() - Web components initialized successfully
 2026-03-29 10:34:23,593 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:165 - setup_web_channel() - Web channel set up successfully
 2026-03-29 10:34:23,814 - gcp_picker.main - INFO - main.py:180 - main() - Application ready - entering main event loop
+2026-03-29 17:05:12,418 - gcp_picker.main - INFO - main.py:146 - main() - Starting GCP Picker application
+2026-03-29 17:05:12,522 - gcp_picker.main - INFO - main.py:161 - main() - Qt application initialized
+2026-03-29 17:05:12,676 - gcp_picker.main - INFO - main.py:170 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 17:05:12,676 - gcp_picker.main - INFO - main.py:176 - main() - Creating main window
+2026-03-29 17:05:12,679 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:66 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 17:05:12,679 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:79 - __init__() - Web components initialized successfully
+2026-03-29 17:05:12,689 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:165 - setup_web_channel() - Web channel set up successfully
+2026-03-29 17:05:12,915 - gcp_picker.main - INFO - main.py:180 - main() - Application ready - entering main event loop
+2026-03-29 17:05:31,325 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:401 - on_imagery_service_changed() - Changing imagery service to: NAIP CONUS (ArcGIS)
+2026-03-29 17:05:31,326 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:433 - on_imagery_service_changed() - Successfully loaded imagery service: NAIP CONUS (ArcGIS)
+2026-03-29 17:05:43,847 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:401 - on_imagery_service_changed() - Changing imagery service to: Esri World Imagery
+2026-03-29 17:05:43,848 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:433 - on_imagery_service_changed() - Successfully loaded imagery service: Esri World Imagery

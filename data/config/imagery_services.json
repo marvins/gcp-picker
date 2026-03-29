@@ -83,7 +83,7 @@
     "default_zoom": 10,
     "min_zoom": 2,
     "max_zoom": 20,
-    "default_service": "NAIP CONUS (ArcGIS)"
+    "default_service": "Esri World Imagery"
   },
   "application_settings": {
     "auto_fetch_elevation": true,
