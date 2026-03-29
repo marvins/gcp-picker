@@ -52,3 +52,12 @@ from qtpy.QtWidgets import QApplication, QMainWindow
 from app.core.coordinate import Geographic, Pixel, UTM
 from app.core.terrain import elevation
 ```
+
+#  Typing Hints
+
+- Use `|` for union types (Python 3.10+):
+```python
+def setup_logging(log_file: str | None = None):
+    value: int | str | None
+```
+

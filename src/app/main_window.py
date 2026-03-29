@@ -13,7 +13,7 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QKeySequence
 
 from app.viewers.test_image_viewer import Test_Image_Viewer
-from app.viewers.reference_viewer import Reference_Viewer
+from app.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
 from app.widgets.gcp_manager import GCP_Manager
 from app.widgets.status_panel import Status_Panel
 from app.core.gcp_processor import GCP_Processor
@@ -41,7 +41,7 @@ class MainWindow(QMainWindow):
         self.connect_signals()
 
     def setup_ui(self):
-        """Setup the main UI layout."""
+        """Setup the user interface."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
@@ -49,41 +49,56 @@ class MainWindow(QMainWindow):
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(5, 5, 5, 5)
 
-        # Create splitter for resizable panels
-        splitter = QSplitter(Qt.Horizontal)
+        # Create main horizontal splitter for left/right panels
+        self.image_splitter = QSplitter(Qt.Horizontal)
 
-        # Left panel - Test image viewer
+        # Left panel - Reference viewer (Leaflet)
+        self.reference_viewer = Leaflet_Reference_Viewer()
+        ref_container = QWidget()
+        ref_layout = QVBoxLayout(ref_container)
+        ref_layout.setContentsMargins(0, 0, 0, 0)
+        ref_layout.addWidget(self.reference_viewer)
+
+        self.image_splitter.addWidget(ref_container)
+
+        # Right panel - Test image viewer
         self.test_viewer = Test_Image_Viewer()
-        splitter.addWidget(self.test_viewer)
+        test_container = QWidget()
+        test_layout = QVBoxLayout(test_container)
+        test_layout.setContentsMargins(0, 0, 0, 0)
+        test_layout.addWidget(self.test_viewer)
 
-        # Right panel - Reference viewer
-        self.reference_viewer = Reference_Viewer()
-        splitter.addWidget(self.reference_viewer)
+        self.image_splitter.addWidget(test_container)
 
-        # Set initial splitter sizes (50/50)
-        splitter.setSizes([700, 700])
-        main_layout.addWidget(splitter)
+        # Set initial splitter sizes (make panels smaller and equal)
+        self.image_splitter.setSizes([500, 500])
 
-        # Bottom panel - GCP manager and status
-        bottom_splitter = QSplitter(Qt.Vertical)
+        # Create vertical splitter for main content and sidebar
+        self.main_splitter = QSplitter(Qt.Horizontal)
 
-        # GCP Manager
+        # Add the image splitter to the left
+        self.main_splitter.addWidget(self.image_splitter)
+
+        # Create sidebar widget
+        sidebar = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(5, 5, 5, 5)
+
+        # GCP Manager in sidebar (for now, until we integrate the new sidebar)
         self.gcp_manager = GCP_Manager()
-        bottom_splitter.addWidget(self.gcp_manager)
+        sidebar_layout.addWidget(self.gcp_manager)
 
-        # Status Panel
+        # Status Panel in sidebar (for now, until we integrate the new sidebar)
         self.status_panel = Status_Panel()
-        bottom_splitter.addWidget(self.status_panel)
+        sidebar_layout.addWidget(self.status_panel)
 
-        # Set bottom panel sizes
-        bottom_splitter.setSizes([400, 200])
-        main_layout.addWidget(bottom_splitter)
+        # Set sidebar width and add to main splitter
+        sidebar.setMaximumWidth(400)
+        sidebar.setMinimumWidth(300)
+        self.main_splitter.addWidget(sidebar)
 
-        # Set main splitter
-        self.main_splitter = QSplitter(Qt.Vertical)
-        self.main_splitter.addWidget(splitter)
-        self.main_splitter.addWidget(bottom_splitter)
-        self.main_splitter.setSizes([600, 600])
+        # Set main splitter sizes (images 70%, sidebar 30%)
+        self.main_splitter.setSizes([1000, 300])
 
         main_layout.addWidget(self.main_splitter)
 
@@ -196,15 +211,51 @@ class MainWindow(QMainWindow):
         # Reference viewer signals
         self.reference_viewer.point_selected.connect(self.on_reference_point_selected)
         self.reference_viewer.reference_loaded.connect(self.on_reference_loaded)
-        self.reference_viewer.gcp_point_clicked.connect(self.on_reference_gcp_clicked)
 
         # GCP manager signals
         self.gcp_manager.gcp_added.connect(self.on_gcp_added)
         self.gcp_manager.gcp_removed.connect(self.on_gcp_removed)
         self.gcp_manager.gcp_selected.connect(self.on_gcp_selected)
 
-        # Orthorectifier signals
-        self.orthorectifier.orthorectification_complete.connect(self.on_orthorectification_complete)
+    def on_reference_point_selected(self, x, y, lon, lat):
+        """Handle reference point selection."""
+        self.gcp_processor.set_pending_reference_point((x, y, lon, lat))
+        self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
+        self.update_reference_status(lat=lat, lon=lon)
+
+    def on_test_point_selected(self, x, y):
+        """Handle test image point selection."""
+        self.gcp_processor.set_pending_test_point(x, y)
+        self.status_bar.showMessage(f'Test point selected: ({x:.1f}, {y:.1f})')
+        self.update_test_status(x=x, y=y)
+
+    def on_test_image_loaded(self, image_path):
+        """Handle test image loading."""
+        self.gcp_processor.set_test_image_path(image_path)
+        self.status_bar.showMessage(f'Test image loaded: {Path(image_path).name}')
+
+    def on_test_gcp_clicked(self, gcp_id):
+        """Handle GCP point click in test viewer."""
+        self.gcp_manager.select_gcp(gcp_id)
+
+    def on_reference_loaded(self, reference_info):
+        """Handle reference source loading."""
+        self.gcp_processor.set_reference_info(reference_info)
+        self.status_bar.showMessage(f'Reference loaded: {reference_info.get("name", "Unknown")}')
+
+    def update_reference_status(self, zoom_level=None, lat=None, lon=None):
+        """Update reference viewer status bar."""
+        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
+        lat_text = f"Lat: {lat:.6f}" if lat else "Lat: N/A"
+        lon_text = f"Lon: {lon:.6f}" if lon else "Lon: N/A"
+        self.status_bar.showMessage(f"Reference {zoom_text} | {lat_text} | {lon_text}")
+
+    def update_test_status(self, zoom_level=None, x=None, y=None):
+        """Update test viewer status bar."""
+        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
+        x_text = f"X: {x:.1f}" if x is not None else "X: N/A"
+        y_text = f"Y: {y:.1f}" if y is not None else "Y: N/A"
+        self.status_bar.showMessage(f"Test {zoom_text} | {x_text} | {y_text}")
 
     def open_test_image(self):
         """Open a test image file."""

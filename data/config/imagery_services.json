@@ -1,0 +1,100 @@
+{
+  "imagery_services": {
+    "NAIP CONUS (ArcGIS)": {
+      "name": "NAIP CONUS (ArcGIS)",
+      "url": "https://gis.apfo.usda.gov/arcgis/rest/services/NAIP/USDA_CONUS_PRIME/ImageServer",
+      "type": "arcgis",
+      "attribution": "USDA NAIP",
+      "description": "USDA National Agriculture Imagery Program - Continental US",
+      "max_zoom": 20,
+      "enabled": true,
+      "priority": 1
+    },
+    "NAIP CONUS WMS": {
+      "name": "NAIP CONUS WMS",
+      "url": "https://gis.apfo.usda.gov/arcgis/services/NAIP/USDA_CONUS_PRIME/ImageServer/WMSServer",
+      "type": "wms",
+      "attribution": "USDA NAIP",
+      "layers": "NAIP_USDA_CONUS_PRIME",
+      "format": "image/png",
+      "description": "USDA NAIP via WMS protocol",
+      "max_zoom": 18,
+      "enabled": true,
+      "priority": 2
+    },
+    "OpenStreetMap": {
+      "name": "OpenStreetMap",
+      "url": "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      "type": "xyz",
+      "attribution": "© OpenStreetMap contributors",
+      "description": "Open source world map",
+      "max_zoom": 19,
+      "enabled": true,
+      "priority": 10
+    },
+    "Esri World Imagery": {
+      "name": "Esri World Imagery",
+      "url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      "type": "xyz",
+      "attribution": "© Esri",
+      "description": "Esri global satellite imagery",
+      "max_zoom": 19,
+      "enabled": true,
+      "priority": 5
+    },
+    "Google Satellite": {
+      "name": "Google Satellite",
+      "url": "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+      "type": "xyz",
+      "attribution": "© Google",
+      "description": "Google satellite imagery",
+      "max_zoom": 20,
+      "enabled": false,
+      "priority": 3,
+      "note": "May require additional attribution terms"
+    },
+    "USGS Topographic": {
+      "name": "USGS Topographic",
+      "url": "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
+      "type": "xyz",
+      "attribution": "USGS",
+      "description": "USGS topographic maps",
+      "max_zoom": 16,
+      "enabled": false,
+      "priority": 7
+    },
+    "NASA GIBS": {
+      "name": "NASA GIBS MODIS",
+      "url": "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_TrueColor/default/{Time}/{TileMatrixSet}/{z}/{y}/{x}.jpg",
+      "type": "wmts",
+      "attribution": "NASA GIBS",
+      "description": "NASA Global Imagery Browse Services - MODIS",
+      "max_zoom": 9,
+      "enabled": false,
+      "priority": 8,
+      "note": "Lower resolution but global coverage"
+    }
+  },
+  "map_settings": {
+    "default_center": {
+      "latitude_deg": 39.8283,
+      "longitude_deg": -98.5795
+    },
+    "default_zoom": 10,
+    "min_zoom": 2,
+    "max_zoom": 20,
+    "default_service": "NAIP CONUS (ArcGIS)"
+  },
+  "application_settings": {
+    "auto_fetch_elevation": true,
+    "elevation_service": "google",
+    "show_gcp_ids": true,
+    "default_point_size": 8,
+    "coordinate_format": "decimal_degrees",
+    "precision": {
+      "latitude": 6,
+      "longitude": 6,
+      "elevation": 1
+    }
+  }
+}

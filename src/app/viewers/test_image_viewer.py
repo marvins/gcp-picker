@@ -11,7 +11,6 @@ from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
 
 from app.widgets.image_canvas import Image_Canvas
-from app.widgets.zoom_controls import Zoom_Controls
 
 class Test_Image_Viewer(QWidget):
     """Viewer for test image with point selection capabilities."""
@@ -70,11 +69,6 @@ class Test_Image_Viewer(QWidget):
         self.scroll_area.setWidget(self.image_canvas)
 
         layout.addWidget(self.scroll_area)
-
-        # Zoom controls
-        self.zoom_controls = Zoom_Controls()
-        self.zoom_controls.zoom_changed.connect(self.on_zoom_changed)
-        layout.addWidget(self.zoom_controls)
 
         # Status bar
         self.status_label = QLabel("Ready")
@@ -251,10 +245,6 @@ class Test_Image_Viewer(QWidget):
         """Handle GCP point click."""
         self.gcp_point_clicked.emit(gcp_id)
         self.status_label.setText(f"GCP {gcp_id} selected")
-
-    def on_zoom_changed(self, zoom_factor):
-        """Handle zoom change."""
-        self.image_canvas.set_zoom(zoom_factor)
 
     def add_gcp_point(self, x, y, gcp_id):
         """Add a GCP point."""
