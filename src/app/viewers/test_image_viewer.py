@@ -7,10 +7,10 @@ import json
 import numpy as np
 import rasterio
 from pathlib import Path
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QPushButton, QScrollArea, QFrame)
 from qtpy.QtCore import Qt, Signal, QPoint
-from qtpy.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
+from qtpy.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
 
 from app.widgets.image_canvas import Image_Canvas
 
@@ -81,8 +81,6 @@ class Test_Image_Viewer(QWidget):
 
     def load_image_dialog(self):
         """Open file dialog to load test image."""
-        from qtpy.QtWidgets import QFileDialog
-
         file_path, _ = QFileDialog.getOpenFileName(
             self, 'Open Test Image', '',
             'Image Files (*.tif *.tiff *.jpg *.jpeg *.png *.img);;All Files (*)'
@@ -191,8 +189,6 @@ class Test_Image_Viewer(QWidget):
             q_image = self.current_image
         else:
             q_image = cv2.cvtColor(self.current_image, cv2.COLOR_GRAY2RGB)
-
-        from qtpy.QtGui import QImage
 
         qt_image = QImage(
             q_image.data, width, height, bytes_per_line, QImage.Format_RGB888
