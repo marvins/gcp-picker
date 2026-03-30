@@ -19,6 +19,7 @@ class Test_Image_Viewer(QWidget):
     point_selected = Signal(float, float)  # x, y in image coordinates
     image_loaded = Signal(str)  # image path
     gcp_point_clicked = Signal(int)  # gcp_id
+    cursor_moved = Signal(int, int, object, object, object, object)  # x, y, pixel_value, lat, lon, alt
 
     def __init__(self):
         super().__init__()
@@ -66,6 +67,7 @@ class Test_Image_Viewer(QWidget):
         self.image_canvas = Image_Canvas()
         self.image_canvas.point_clicked.connect(self.on_point_clicked)
         self.image_canvas.gcp_point_clicked.connect(self.on_gcp_point_clicked)
+        self.image_canvas.cursor_moved.connect(self._on_cursor_moved)
         self.scroll_area.setWidget(self.image_canvas)
 
         layout.addWidget(self.scroll_area)
@@ -244,6 +246,16 @@ class Test_Image_Viewer(QWidget):
     def on_gcp_point_clicked(self, gcp_id):
         """Handle GCP point click."""
         self.gcp_point_clicked.emit(gcp_id)
+
+    def _on_cursor_moved(self, x, y, pixel_value):
+        """Handle cursor movement and forward signal with optional ortho coordinates."""
+        # Get orthorectified coordinates if available
+        lat, lon, alt = None, None, None
+        if self.is_orthorectified and self.ortho_transform:
+            # Calculate ortho coordinates from pixel coordinates
+            lat, lon, alt = self.ortho_transform(x, y)
+
+        self.cursor_moved.emit(x, y, pixel_value, lat, lon, alt)
         self.status_label.setText(f"GCP {gcp_id} selected")
 
     def add_gcp_point(self, x, y, gcp_id):

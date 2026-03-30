@@ -54,6 +54,7 @@ class Leaflet_Reference_Viewer(QWidget):
     # Signals
     point_selected = Signal(float, float, float, float)  # x, y, lon, lat
     reference_loaded = Signal(dict)  # reference info
+    cursor_moved = Signal(float, float, float)  # lat, lon, alt (alt optional)
 
     def __init__(self):
         super().__init__()
@@ -496,3 +497,27 @@ class Leaflet_Reference_Viewer(QWidget):
         if self.current_reference is None:
             return {}
         return self.current_reference.copy()
+
+    def set_center(self, lat: float, lon: float, zoom: int = 12):
+        """Center the map on a specific location.
+
+        Args:
+            lat: Latitude to center on
+            lon: Longitude to center on
+            zoom: Zoom level (default: 12)
+        """
+        if self.web_view is None:
+            self.logger.warning("Web view not available, cannot set center")
+            return
+
+        js = f"""
+        if (window.map) {{
+            window.map.setView([{lat}, {lon}], {zoom});
+            console.log("Map centered on: {lat}, {lon} at zoom {zoom}");
+        }} else {{
+            console.error("Map not available for set_center");
+        }}
+        """
+        self.web_view.page().runJavaScript(js)
+        self.status_label.setText(f"Center: ({lat:.6f}, {lon:.6f})")
+        self.logger.info(f"Set map center to ({lat}, {lon}) zoom {zoom}")

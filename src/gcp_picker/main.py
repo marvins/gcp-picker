@@ -120,6 +120,12 @@ Examples:
     )
 
     parser.add_argument(
+        '-c', '--collection',
+        type=str,
+        help='Path to collection TOML file to load on startup'
+    )
+
+    parser.add_argument(
         '--version',
         action='version',
         version='GCP Picker 1.0.0'
@@ -176,6 +182,11 @@ def main():
     logger.info("Creating main window")
     main_window = MainWindow()
     main_window.show()
+
+    # Load collection if provided via command line
+    if args.collection:
+        logger.info(f"Loading collection from command line: {args.collection}")
+        main_window.load_collection_from_path(args.collection)
 
     logger.info("Application ready - entering main event loop")
     sys.exit(app.exec())

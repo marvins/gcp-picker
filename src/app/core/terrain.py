@@ -10,7 +10,6 @@ import json
 import pickle
 import tempfile
 from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass
 import numpy as np
 import requests
@@ -26,7 +25,7 @@ class ElevationPoint:
     longitude: float
     elevation: float
     source: str
-    accuracy: Optional[float] = None
+    accuracy: float | None = None
 
     def __str__(self) -> str:
         """String representation."""
@@ -39,11 +38,11 @@ class ElevationSource:
     def __init__(self, name: str):
         self.name = name
 
-    def get_elevation(self, lat: float, lon: float) -> Optional[float]:
+    def get_elevation(self, lat: float, lon: float) -> float | None:
         """Get elevation for a single point."""
         raise NotImplementedError
 
-    def get_elevations(self, points: list[tuple[float, float]]) -> list[Optional[float]]:
+    def get_elevations(self, points: list[tuple[float, float]]) -> list[float | None]:
         """Get elevations for multiple points."""
         return [self.get_elevation(lat, lon) for lat, lon in points]
 
@@ -57,7 +56,7 @@ class SRTMElevationSource(ElevationSource):
         self.cache_dir = Path(tempfile.gettempdir()) / "gcp_picker" / "srtm_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_elevation(self, lat: float, lon: float) -> Optional[float]:
+    def get_elevation(self, lat: float, lon: float) -> float | None:
         """Get elevation from SRTM using Earth Engine API."""
         try:
             # Check cache first
@@ -99,12 +98,12 @@ class SRTMElevationSource(ElevationSource):
 
                 return elevation
 
-        except Exception:
+        except (requests.RequestException, json.JSONDecodeError, KeyError, IOError):
             pass
 
         return None
 
-    def _get_opentopography_elevation(self, lat: float, lon: float) -> Optional[float]:
+    def _get_opentopography_elevation(self, lat: float, lon: float) -> float | None:
         """Fallback to OpenTopography API."""
         try:
             url = "https://portal.opentopography.org/API/otds"
@@ -122,7 +121,7 @@ class SRTMElevationSource(ElevationSource):
             if 'data' in data and len(data['data']) > 0:
                 return float(data['data'][0]['elevation'])
 
-        except Exception:
+        except (requests.RequestException, json.JSONDecodeError, KeyError, ValueError):
             pass
 
         return None
@@ -146,7 +145,7 @@ class AWSElevationSource(ElevationSource):
         self.cache_dir = Path(tempfile.gettempdir()) / "gcp_picker" / "aws_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_elevation(self, lat: float, lon: float) -> Optional[float]:
+    def get_elevation(self, lat: float, lon: float) -> float | None:
         """Get elevation from AWS Terrain Tiles."""
         try:
             # Calculate tile coordinates
@@ -184,7 +183,7 @@ class AWSElevationSource(ElevationSource):
 
             return elevation
 
-        except Exception:
+        except (requests.RequestException, IOError, OSError, ValueError):
             pass
 
         return None
@@ -200,7 +199,7 @@ class AWSElevationSource(ElevationSource):
 class LocalDEMElevationSource(ElevationSource):
     """Local DEM file elevation source."""
 
-    def __init__(self, dem_file: Union[str, Path]):
+    def __init__(self, dem_file: str | Path):
         super().__init__(f"Local DEM ({Path(dem_file).name})")
         self.dem_file = Path(dem_file)
         self.dataset = None
@@ -226,7 +225,7 @@ class LocalDEMElevationSource(ElevationSource):
         except Exception as e:
             raise RuntimeError(f"Failed to load DEM: {e}")
 
-    def get_elevation(self, lat: float, lon: float) -> Optional[float]:
+    def get_elevation(self, lat: float, lon: float) -> float | None:
         """Get elevation from local DEM."""
         if self.dataset is None:
             return None
@@ -252,7 +251,7 @@ class LocalDEMElevationSource(ElevationSource):
 
             return float(elevation)
 
-        except Exception:
+        except (ValueError, IndexError, TypeError):
             pass
 
         return None
@@ -287,9 +286,9 @@ class Manager:
             local_source = LocalDEMElevationSource(dem_file)
             self.sources.insert(0, local_source)  # Prioritize local DEM
         except Exception as e:
-            print(f"Warning: Could not add local DEM {dem_file}: {e}")
+            logging.warning(f"Could not add local DEM {dem_file}: {e}")
 
-    def elevation(self, latitude: float, longitude: float) -> Optional[float]:
+    def elevation(self, latitude: float, longitude: float) -> float | None:
         """Get elevation for a geographic coordinate."""
         # Check cache first
         cache_key = f"{latitude:.6f},{longitude:.6f}"
@@ -316,12 +315,12 @@ class Manager:
                     return elevation
 
             except Exception as e:
-                print(f"Warning: Elevation source {source.name} failed: {e}")
+                logging.warning(f"Elevation source {source.name} failed: {e}")
                 continue
 
         return None
 
-    def elevation_batch(self, points: list[tuple[float, float]]) -> list[Optional[float]]:
+    def elevation_batch(self, points: list[tuple[float, float]]) -> list[float | None]:
         """Get elevations for multiple points (batch processing)."""
         # Check cache first
         cached_results = []
@@ -377,7 +376,7 @@ class Manager:
                                     self.elevation_cache[cache_key] = point
 
                     except Exception as e:
-                        print(f"Warning: Batch elevation request to {source.name} failed: {e}")
+                        logging.warning(f"Batch elevation request to {source.name} failed: {e}")
 
         # Save cache
         if self.cache_enabled:
@@ -385,7 +384,7 @@ class Manager:
 
         return cached_results
 
-    def get_elevation_point(self, latitude: float, longitude: float) -> Optional[ElevationPoint]:
+    def get_elevation_point(self, latitude: float, longitude: float) -> ElevationPoint | None:
         """Get detailed elevation point with metadata."""
         cache_key = f"{latitude:.6f},{longitude:.6f}"
 
@@ -418,7 +417,7 @@ class Manager:
         try:
             with open(self.cache_file, 'rb') as f:
                 self.elevation_cache = pickle.load(f)
-        except Exception:
+        except (pickle.PickleError, IOError, EOFError):
             self.elevation_cache = {}
 
     def _save_cache(self):
@@ -426,12 +425,12 @@ class Manager:
         try:
             with open(self.cache_file, 'wb') as f:
                 pickle.dump(self.elevation_cache, f)
-        except Exception as e:
-            print(f"Warning: Could not save elevation cache: {e}")
+        except (IOError, pickle.PickleError) as e:
+            logging.warning(f"Could not save elevation cache: {e}")
 
 
 # Global terrain manager instance
-_terrain_manager: Optional[Manager] = None
+_terrain_manager: Manager | None = None
 
 
 def get_terrain_manager() -> Manager:
@@ -442,6 +441,6 @@ def get_terrain_manager() -> Manager:
     return _terrain_manager
 
 
-def elevation(latitude: float, longitude: float) -> Optional[float]:
+def elevation(latitude: float, longitude: float) -> float | None:
     """Convenience function to get elevation."""
     return get_terrain_manager().elevation(latitude, longitude)

@@ -2,17 +2,21 @@
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.hooks]
+# Run version generation script during build
+pre_build = "scripts.generate_version:generate_version_file"
+
 [project]
 name = "gcp-picker"
-version = "1.0.0"
+dynamic = ["version"]
 description = "Ground Control Point Selection Application with Progressive Orthorectification"
 readme = "README.md"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
-    {name = "GCP Picker Team", email = "contact@gcp-picker.dev"}
+    {name = "Marvin Smith", email = "marvin.smith@terminus-geo.com"}
 ]
 maintainers = [
-    {name = "GCP Picker Team", email = "contact@gcp-picker.dev"}
+    {name = "Marvin Smith", email = "marvin.smith@terminus-geo.com"}
 ]
 keywords = ["gis", "remote-sensing", "photogrammetry", "georeferencing", "ground-control-points"]
 classifiers = [
@@ -45,6 +49,9 @@ dependencies = [
     "folium>=0.14.0",
     "branca>=0.6.0",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "gcp_picker.__version__"}
 
 [project.optional-dependencies]
 dev = [

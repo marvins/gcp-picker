@@ -1,10 +1,10 @@
 """
-Image Canvas Widget - Interactive image display with point selection
+Image Canvas Widget - Interactive image display with point selection, zoom, and pan
 """
 
-from qtpy.QtWidgets import QWidget, QLabel
+from qtpy.QtWidgets import QWidget, QLabel, QScrollArea
 from qtpy.QtCore import Qt, Signal, QPoint, QRect
-from qtpy.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
+from qtpy.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent, QWheelEvent
 
 class Image_Canvas(QWidget):
     """Interactive image canvas with point selection capabilities."""
@@ -12,6 +12,7 @@ class Image_Canvas(QWidget):
     # Signals
     point_clicked = Signal(int, int)  # x, y in widget coordinates
     gcp_point_clicked = Signal(int)  # gcp_id
+    cursor_moved = Signal(int, int, object)  # x, y, pixel_value
 
     def __init__(self):
         super().__init__()
@@ -22,6 +23,10 @@ class Image_Canvas(QWidget):
         self.georeferencing = None  # (transform, width, height)
         self.setMouseTracking(True)
         self.setMinimumSize(400, 300)
+
+        # Panning state
+        self._panning = False
+        self._last_pan_pos = None
 
     def set_pixmap(self, pixmap):
         """Set the pixmap to display."""
@@ -38,6 +43,13 @@ class Image_Canvas(QWidget):
         if self.pixmap:
             self.setFixedSize(self.pixmap.size() * self.zoom_factor)
         self.update()
+
+    def _get_scroll_area(self) -> QScrollArea | None:
+        """Get the parent QScrollArea if available."""
+        parent = self.parent()
+        if isinstance(parent, QScrollArea):
+            return parent
+        return None
 
     def set_georeferencing(self, transform, width, height):
         """Set georeferencing information."""
@@ -59,10 +71,43 @@ class Image_Canvas(QWidget):
         self.gcp_points.clear()
         self.update()
 
-    def highlight_point(self, x, y):
-        """Highlight a specific point."""
-        self.highlighted_point = (x, y)
-        self.update()
+    def wheelEvent(self, event: QWheelEvent):
+        """Handle mouse wheel for zooming."""
+        if not self.pixmap:
+            return
+
+        # Get wheel delta
+        delta = event.angleDelta().y()
+
+        # Calculate zoom factor change
+        zoom_step = 0.1
+        if delta > 0:
+            new_zoom = min(self.zoom_factor + zoom_step, 5.0)  # Max 5x zoom
+        else:
+            new_zoom = max(self.zoom_factor - zoom_step, 0.1)  # Min 0.1x zoom
+
+        # Get mouse position before zoom (in image coordinates)
+        mouse_pos = event.position()
+        img_x = mouse_pos.x() / self.zoom_factor
+        img_y = mouse_pos.y() / self.zoom_factor
+
+        # Apply zoom
+        self.set_zoom(new_zoom)
+
+        # Adjust scroll to keep mouse over same image point
+        scroll_area = self.parent()
+        if isinstance(scroll_area, QScrollArea):
+            new_pixel_x = img_x * new_zoom
+            new_pixel_y = img_y * new_zoom
+
+            # Calculate scroll position to center on mouse point
+            h_scroll = int(new_pixel_x - mouse_pos.x())
+            v_scroll = int(new_pixel_y - mouse_pos.y())
+
+            scroll_area.horizontalScrollBar().setValue(h_scroll)
+            scroll_area.verticalScrollBar().setValue(v_scroll)
+
+        event.accept()
 
     def pixel_to_image_coords(self, pixel_x, pixel_y):
         """Convert pixel coordinates to image coordinates."""
@@ -138,6 +183,14 @@ class Image_Canvas(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press."""
+        if event.button() == Qt.MiddleButton:
+            # Start panning
+            self._panning = True
+            self._last_pan_pos = event.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+
         if event.button() == Qt.LeftButton:
             x, y = event.x(), event.y()
 
@@ -153,8 +206,29 @@ class Image_Canvas(QWidget):
             self.point_clicked.emit(x, y)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        """Handle mouse move for hover effects."""
+        """Handle mouse move for hover effects and panning."""
         x, y = event.x(), event.y()
+
+        # Handle panning
+        if self._panning and self._last_pan_pos:
+            scroll_area = self._get_scroll_area()
+            if scroll_area:
+                delta_x = self._last_pan_pos.x() - x
+                delta_y = self._last_pan_pos.y() - y
+
+                h_bar = scroll_area.horizontalScrollBar()
+                v_bar = scroll_area.verticalScrollBar()
+
+                h_bar.setValue(h_bar.value() + delta_x)
+                v_bar.setValue(v_bar.value() + delta_y)
+
+            self._last_pan_pos = event.pos()
+            event.accept()
+            return
+
+        # Emit cursor_moved signal for metadata panel
+        img_x, img_y = self.pixel_to_image_coords(x, y)
+        self.cursor_moved.emit(int(img_x), int(img_y), None)  # pixel_value will be added later
 
         # Check if hovering over a GCP point
         hovering_gcp = False
@@ -169,3 +243,12 @@ class Image_Canvas(QWidget):
             self.setCursor(Qt.PointingHandCursor)
         else:
             self.setCursor(Qt.CrossCursor)
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Handle mouse release."""
+        if event.button() == Qt.MiddleButton:
+            # Stop panning
+            self._panning = False
+            self._last_pan_pos = None
+            self.setCursor(Qt.CrossCursor)
+            event.accept()

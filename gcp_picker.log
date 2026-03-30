@@ -138,3 +138,65 @@
 2026-03-29 17:05:31,326 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:433 - on_imagery_service_changed() - Successfully loaded imagery service: NAIP CONUS (ArcGIS)
 2026-03-29 17:05:43,847 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:401 - on_imagery_service_changed() - Changing imagery service to: Esri World Imagery
 2026-03-29 17:05:43,848 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:433 - on_imagery_service_changed() - Successfully loaded imagery service: Esri World Imagery
+2026-03-29 19:00:09,643 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:00:09,767 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:00:09,959 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:00:09,959 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:00:09,962 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:66 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:00:09,963 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:79 - __init__() - Web components initialized successfully
+2026-03-29 19:00:09,974 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:165 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:00:10,257 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection
+2026-03-29 19:00:12,221 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop
+2026-03-29 19:00:19,229 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:00:19,316 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:00:19,392 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:00:19,392 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:00:19,392 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:66 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:00:19,393 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:79 - __init__() - Web components initialized successfully
+2026-03-29 19:00:19,394 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:165 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:00:19,574 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection/collection_config.toml
+2026-03-29 19:00:48,624 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:522 - set_center() - Set map center to (39.7392, -104.9903) zoom 12
+2026-03-29 19:00:48,624 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop
+2026-03-29 19:04:54,759 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:04:54,842 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:04:54,921 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:04:54,921 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:04:54,922 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:66 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:04:54,922 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:79 - __init__() - Web components initialized successfully
+2026-03-29 19:04:54,924 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:165 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:04:55,118 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection/collection_config.toml
+2026-03-29 19:04:57,036 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:522 - set_center() - Set map center to (39.7392, -104.9903) zoom 12
+2026-03-29 19:04:57,036 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop
+2026-03-29 19:13:11,107 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:13:11,202 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:13:11,285 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:13:11,285 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:13:11,286 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:67 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:13:11,286 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:80 - __init__() - Web components initialized successfully
+2026-03-29 19:13:11,288 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:166 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:17:00,867 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:17:00,962 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:17:01,047 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:17:01,047 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:17:01,047 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:67 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:17:01,048 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:80 - __init__() - Web components initialized successfully
+2026-03-29 19:17:01,049 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:166 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:25:39,941 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:25:40,039 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:25:40,119 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:25:40,119 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:25:40,120 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:67 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:25:40,120 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:80 - __init__() - Web components initialized successfully
+2026-03-29 19:25:40,121 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:166 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:25:40,332 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection/collection_config.toml
+2026-03-29 19:28:56,797 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 19:28:56,887 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 19:28:56,969 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 19:28:56,969 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 19:28:56,969 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:67 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 19:28:56,970 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:80 - __init__() - Web components initialized successfully
+2026-03-29 19:28:56,971 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:166 - setup_web_channel() - Web channel set up successfully
+2026-03-29 19:28:57,185 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection/collection_config.toml
+2026-03-29 19:28:57,202 - app.core.imagery_api - ERROR - imagery_api.py:113 - get_imagery_info() - Error reading imagery info: GDAL is required for reading raster files
+2026-03-29 19:28:59,249 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:523 - set_center() - Set map center to (39.7392, -104.9903) zoom 12
+2026-03-29 19:28:59,249 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop

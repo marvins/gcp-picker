@@ -15,9 +15,12 @@ from qtpy.QtGui import QIcon, QKeySequence
 from app.viewers.test_image_viewer import Test_Image_Viewer
 from app.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
 from app.widgets.gcp_manager import GCP_Manager
-from app.widgets.status_panel import Status_Panel
+from app.widgets.about_dialog import show_about_dialog
+from app.sidebar.main_sidebar import Main_Sidebar
 from app.core.gcp_processor import GCP_Processor
 from app.core.orthorectifier import Orthorectifier
+from app.core.collection_manager import Collection_Manager, Collection_Info
+from app.core.imagery_api import Imagery_Loader
 
 class MainWindow(QMainWindow):
     """Main application window for GCP Picker."""
@@ -30,6 +33,8 @@ class MainWindow(QMainWindow):
         # Initialize core components
         self.gcp_processor = GCP_Processor()
         self.orthorectifier = Orthorectifier()
+        self.collection_manager = Collection_Manager()
+        self.imagery_loader = Imagery_Loader()
 
         # Setup UI
         self.setup_ui()
@@ -79,23 +84,22 @@ class MainWindow(QMainWindow):
         # Add the image splitter to the left
         self.main_splitter.addWidget(self.image_splitter)
 
-        # Create sidebar widget
-        sidebar = QWidget()
-        sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(5, 5, 5, 5)
+        # Create sidebar widget using Main_Sidebar
+        self.sidebar = Main_Sidebar()
+        self.gcp_manager = self.sidebar.get_gcp_panel().gcp_manager
+        self.status_panel = self.sidebar.get_status_panel()
 
-        # GCP Manager in sidebar (for now, until we integrate the new sidebar)
-        self.gcp_manager = GCP_Manager()
-        sidebar_layout.addWidget(self.gcp_manager)
-
-        # Status Panel in sidebar (for now, until we integrate the new sidebar)
-        self.status_panel = Status_Panel()
-        sidebar_layout.addWidget(self.status_panel)
+        # Connect collection nav panel signals
+        nav_panel = self.sidebar.get_collection_nav_panel()
+        nav_panel.first_image_requested.connect(self.load_first_collection_image)
+        nav_panel.previous_image_requested.connect(self.load_previous_collection_image)
+        nav_panel.next_image_requested.connect(self.load_next_collection_image)
+        nav_panel.last_image_requested.connect(self.load_last_collection_image)
 
         # Set sidebar width and add to main splitter
-        sidebar.setMaximumWidth(400)
-        sidebar.setMinimumWidth(300)
-        self.main_splitter.addWidget(sidebar)
+        self.sidebar.setMaximumWidth(400)
+        self.sidebar.setMinimumWidth(300)
+        self.main_splitter.addWidget(self.sidebar)
 
         # Set main splitter sizes (images 70%, sidebar 30%)
         self.main_splitter.setSizes([1000, 300])
@@ -140,7 +144,30 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Edit menu
+        # Collection menu
+        collection_menu = menubar.addMenu('&Collection')
+
+        load_collection_action = QAction('Load Collection...', self)
+        load_collection_action.setShortcut(QKeySequence.Open)
+        load_collection_action.setStatusTip('Load a collection configuration file')
+        load_collection_action.triggered.connect(self.load_collection)
+        collection_menu.addAction(load_collection_action)
+
+        collection_menu.addSeparator()
+
+        next_image_action = QAction('Next Image', self)
+        next_image_action.setShortcut('Ctrl+N')
+        next_image_action.setStatusTip('Load next image in collection')
+        next_image_action.triggered.connect(self.load_next_collection_image)
+        collection_menu.addAction(next_image_action)
+
+        prev_image_action = QAction('Previous Image', self)
+        prev_image_action.setShortcut('Ctrl+P')
+        prev_image_action.setStatusTip('Load previous image in collection')
+        prev_image_action.triggered.connect(self.load_previous_collection_image)
+        collection_menu.addAction(prev_image_action)
+
+        collection_menu.addSeparator()
         edit_menu = menubar.addMenu('&Edit')
 
         # Clear all GCPs
@@ -207,6 +234,7 @@ class MainWindow(QMainWindow):
         self.test_viewer.point_selected.connect(self.on_test_point_selected)
         self.test_viewer.image_loaded.connect(self.on_test_image_loaded)
         self.test_viewer.gcp_point_clicked.connect(self.on_test_gcp_clicked)
+        self.test_viewer.image_loaded.connect(self._on_image_loaded_update_histogram)
 
         # Reference viewer signals
         self.reference_viewer.point_selected.connect(self.on_reference_point_selected)
@@ -216,6 +244,20 @@ class MainWindow(QMainWindow):
         self.gcp_manager.gcp_added.connect(self.on_gcp_added)
         self.gcp_manager.gcp_removed.connect(self.on_gcp_removed)
         self.gcp_manager.gcp_selected.connect(self.on_gcp_selected)
+
+        # View control panel signals
+        view_panel = self.sidebar.get_view_control_panel()
+        view_panel.min_pixel_changed.connect(self.on_min_pixel_changed)
+        view_panel.max_pixel_changed.connect(self.on_max_pixel_changed)
+        view_panel.brightness_changed.connect(self.on_brightness_changed)
+        view_panel.contrast_changed.connect(self.on_contrast_changed)
+        view_panel.auto_stretch_toggled.connect(self.on_auto_stretch_toggled)
+        view_panel.reset_requested.connect(self.on_view_reset_requested)
+
+        # Metadata panel connections - cursor tracking
+        # Note: These signals need to be emitted by the viewers on mouse move
+        self.reference_viewer.cursor_moved.connect(self.on_reference_cursor_moved)
+        self.test_viewer.cursor_moved.connect(self.on_test_cursor_moved)
 
     def on_reference_point_selected(self, x, y, lon, lat):
         """Handle reference point selection."""
@@ -373,6 +415,14 @@ class MainWindow(QMainWindow):
         """Handle test image loading."""
         self.gcp_processor.set_test_image_path(image_path)
 
+    def _on_image_loaded_update_histogram(self, image_path):
+        """Update histogram when image is loaded."""
+        # Get image data from test viewer
+        if hasattr(self.test_viewer, 'get_image_data'):
+            image_data = self.test_viewer.get_image_data()
+            if image_data is not None:
+                self.sidebar.get_view_control_panel().update_histogram(image_data)
+
     def on_reference_loaded(self, reference_info):
         """Handle reference source loading."""
         self.gcp_processor.set_reference_info(reference_info)
@@ -410,6 +460,39 @@ class MainWindow(QMainWindow):
             self.reference_viewer.highlight_gcp_point(gcp.ref_x, gcp.ref_y)
             self.status_panel.update_gcp_info(gcp)
 
+    def on_min_pixel_changed(self, value: int):
+        """Handle minimum pixel value change."""
+        self.test_viewer.set_min_pixel(value)
+
+    def on_max_pixel_changed(self, value: int):
+        """Handle maximum pixel value change."""
+        self.test_viewer.set_max_pixel(value)
+
+    def on_brightness_changed(self, value: float):
+        """Handle brightness adjustment."""
+        self.test_viewer.set_brightness(value)
+
+    def on_contrast_changed(self, value: float):
+        """Handle contrast adjustment."""
+        self.test_viewer.set_contrast(value)
+
+    def on_auto_stretch_toggled(self, enabled: bool):
+        """Handle auto-stretch toggle."""
+        self.test_viewer.set_auto_stretch(enabled)
+
+    def on_view_reset_requested(self):
+        """Handle reset to default view settings."""
+        self.test_viewer.reset_view_settings()
+
+    def on_reference_cursor_moved(self, lat: float, lon: float, alt: float | None = None):
+        """Handle cursor movement over reference viewer."""
+        self.sidebar.get_metadata_panel().update_reference_metadata(lat, lon, alt)
+
+    def on_test_cursor_moved(self, x: int, y: int, pixel_value: str | None = None,
+                              lat: float | None = None, lon: float | None = None, alt: float | None = None):
+        """Handle cursor movement over test viewer."""
+        self.sidebar.get_metadata_panel().update_test_metadata(x, y, pixel_value, lat, lon, alt)
+
     def on_orthorectification_complete(self, ortho_image_path):
         """Handle orthorectification completion."""
         self.test_viewer.update_orthorectified_image(ortho_image_path)
@@ -429,18 +512,125 @@ class MainWindow(QMainWindow):
 
     def show_about(self):
         """Show about dialog."""
-        QMessageBox.about(
-            self, 'About GCP Picker',
-            'GCP Picker v1.0.0\n\n'
-            'A GUI application for selecting ground control points between '
-            'test imagery and reference sources with progressive orthorectification.\n\n'
-            'Features:\n'
-            '• Dual viewer interface\n'
-            '• WMS/WMTS/GDAL virtual raster support\n'
-            '• Progressive RPC orthorectification\n'
-            '• GCP management and persistence'
+        show_about_dialog(self)
+
+    def load_collection_from_path(self, collection_path: str):
+        """Load a collection from a specific path (used by CLI)."""
+        success = self.collection_manager.load_collection(collection_path)
+        if success:
+            self.status_bar.showMessage(f'Loaded collection: {self.collection_manager.current_collection.name}')
+            # Auto-load first image
+            self.load_first_collection_image()
+        else:
+            QMessageBox.critical(self, 'Error', f'Failed to load collection: {collection_path}')
+            self.status_bar.showMessage('Failed to load collection')
+
+    def load_collection(self):
+        """Load a collection configuration file via file dialog."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 'Load Collection', '',
+            'TOML Files (*.toml);;All Files (*)'
         )
+
+        if file_path:
+            self.load_collection_from_path(file_path)
+
+    def load_first_collection_image(self):
+        """Load the first image from the collection and set seed location."""
+        if not self.collection_manager.has_collection():
+            return
+
+        first_image = self.collection_manager.get_first_image()
+        if not first_image:
+            QMessageBox.information(self, 'Info', 'No images found in collection')
+            return
+
+        # Check if image needs seed location
+        needs_seed = self.imagery_loader.needs_seed_location(first_image)
+
+        # Get collection seed location
+        seed_location = self.collection_manager.get_collection_seed_location()
+
+        # Load the image
+        try:
+            self.test_viewer.load_image(first_image)
+            self.status_bar.showMessage(f'Loaded: {Path(first_image).name}')
+
+            # If image lacks spatial info, use collection location as seed
+            if needs_seed and seed_location:
+                lat, lon = seed_location
+                # Update reference viewer to center on collection location
+                self.reference_viewer.set_center(lat, lon)
+                self.status_bar.showMessage(f'Using collection seed: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}')
+
+            # Update navigation counter
+            self._update_nav_counter()
+
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
+            self.status_bar.showMessage('Failed to load collection image')
+
+    def load_next_collection_image(self):
+        """Load next image in collection."""
+        next_image = self.collection_manager.get_next_image()
+        if next_image:
+            self._load_collection_image(next_image)
+        else:
+            self.status_bar.showMessage('Already at last image in collection')
+
+    def load_previous_collection_image(self):
+        """Load previous image in collection."""
+        prev_image = self.collection_manager.get_previous_image()
+        if prev_image:
+            self._load_collection_image(prev_image)
+        else:
+            self.status_bar.showMessage('Already at first image in collection')
+
+    def load_last_collection_image(self):
+        """Load last image in collection."""
+        if not self.collection_manager.has_collection():
+            return
+
+        # Jump to last index
+        total = len(self.collection_manager.loaded_images)
+        if total > 0:
+            self.collection_manager.current_image_index = total - 1
+            last_image = self.collection_manager.get_current_image()
+            if last_image:
+                self._load_collection_image(last_image)
+        else:
+            self.status_bar.showMessage('No images in collection')
+
+    def _update_nav_counter(self):
+        """Update sidebar navigation counter."""
+        if self.collection_manager.has_collection():
+            current = self.collection_manager.current_image_index + 1
+            total = len(self.collection_manager.loaded_images)
+            self.sidebar.get_collection_nav_panel().update_counter(current, total)
+        else:
+            self.sidebar.get_collection_nav_panel().update_counter(0, 0)
+
+    def _load_collection_image(self, image_path: str):
+        """Helper to load a collection image with seed handling."""
+        needs_seed = self.imagery_loader.needs_seed_location(image_path)
+        seed_location = self.collection_manager.get_collection_seed_location()
+
+        try:
+            self.test_viewer.load_image(image_path)
+
+            if needs_seed and seed_location:
+                lat, lon = seed_location
+                self.reference_viewer.set_center(lat, lon)
+                self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
+            else:
+                self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
+
+            # Update navigation counter
+            self._update_nav_counter()
+
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
 
     def post_init(self):
         """Post-initialization tasks."""
-        self.status_bar.showMessage('Ready - Open a test image to begin')
+        self.status_bar.showMessage('Ready - Open a test image or load a collection to begin')
