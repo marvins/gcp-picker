@@ -5,6 +5,8 @@ Ground Control Point (GCP) data structure
 from dataclasses import dataclass
 from typing import Optional
 
+from rasterio.control import GroundControlPoint
+
 from app.core.coordinate import Geographic, Pixel, UTM
 from app.core.terrain import elevation
 
@@ -93,16 +95,14 @@ class GCP:
         )
 
     def to_gdal_format(self):
-        """Convert to GDAL GCP format."""
-        from osgeo import gdal
-
-        return gdal.GCP(
-            self.geographic.longitude,  # GCPLine
-            self.geographic.latitude,   # GCPPixel
-            self.geographic.elevation or 0,  # GCPZ
-            self.reference_pixel.x,     # GCPX
-            self.reference_pixel.y,     # GCPY
-            self.id                      # GCPId
+        """Convert to rasterio GCP format."""
+        return GroundControlPoint(
+            row=self.test_pixel.y,
+            col=self.test_pixel.x,
+            x=self.geographic.longitude,
+            y=self.geographic.latitude,
+            z=self.geographic.elevation or 0,
+            id=str(self.id)
         )
 
     def __str__(self):

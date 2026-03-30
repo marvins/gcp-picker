@@ -1,5 +1,5 @@
 """
-Imagery API - GDAL-based imagery handling with metadata parsing
+Imagery API - Rasterio-based imagery handling with metadata parsing
 """
 
 import json
@@ -7,6 +7,9 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass
+
+import rasterio
+from pyproj import Transformer
 
 from app.core.gdal_reader import GDALReader
 
@@ -82,15 +85,13 @@ class Imagery_Loader:
                 # Convert to lat/lon if projection exists
                 if has_projection and epsg_code:
                     try:
-                        from osgeo import osr
-                        source_srs = osr.SpatialReference()
-                        source_srs.ImportFromEPSG(epsg_code)
-                        target_srs = osr.SpatialReference()
-                        target_srs.ImportFromEPSG(4326)  # WGS84
-
-                        transform = osr.CoordinateTransformation(source_srs, target_srs)
-                        center_lon, center_lat, _ = transform.TransformPoint(center_y, center_x)
-                    except:
+                        transformer = Transformer.from_crs(
+                            f"EPSG:{epsg_code}",
+                            "EPSG:4326",
+                            always_xy=True
+                        )
+                        center_lon, center_lat = transformer.transform(center_x, center_y)
+                    except Exception:
                         pass
 
             return Imagery_Info(
@@ -188,20 +189,9 @@ class Imagery_Loader:
         return []
 
     def supports_format(self, file_path: str | Path) -> bool:
-        """Check if file format is supported by GDAL.
-
-        Args:
-            file_path: Path to the file to check
-
-        Returns:
-            True if format is supported
-        """
+        """Check if file format is supported by rasterio."""
         try:
-            from osgeo import gdal
-            dataset = gdal.Open(str(file_path))
-            if dataset:
-                dataset = None  # Close dataset
+            with rasterio.open(file_path) as src:
                 return True
-            return False
-        except (ImportError, RuntimeError, ValueError):
+        except (ImportError, rasterio.RasterioIOError, Exception):
             return False

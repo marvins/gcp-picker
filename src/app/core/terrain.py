@@ -11,7 +11,10 @@ import pickle
 import tempfile
 from pathlib import Path
 from dataclasses import dataclass
+import logging
+
 import numpy as np
+import rasterio
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -206,24 +209,33 @@ class LocalDEMElevationSource(ElevationSource):
         self._load_dataset()
 
     def _load_dataset(self):
-        """Load DEM dataset using GDAL."""
+        """Load DEM dataset using rasterio."""
         try:
-            from osgeo import gdal
-
-            self.dataset = gdal.Open(str(self.dem_file))
+            self.dataset = rasterio.open(str(self.dem_file))
             if self.dataset is None:
-                raise ValueError(f"Could not open DEM file: {self.dem_file}")
+                raise RuntimeError(f"Could not open DEM file: {self.dem_file}")
 
-            # Get geotransform
-            self.geotransform = self.dataset.GetGeoTransform()
+            # Get basic info
+            self.bounds = self.dataset.bounds
+            self.transform = self.dataset.transform
 
-            # Get band
-            self.band = self.dataset.GetRasterBand(1)
+            # Get CRS info
+            self.crs = self.dataset.crs
+            if self.crs:
+                self.epsg_code = self.crs.to_epsg()
+            else:
+                self.epsg_code = None
 
-        except ImportError:
-            raise ImportError("GDAL is required for local DEM support")
+            logger.info(f"Loaded DEM: {self.dem_file}")
+            logger.info(f"  Size: {self.dataset.width}x{self.dataset.height}")
+            logger.info(f"  Bounds: {self.bounds}")
+            if self.epsg_code:
+                logger.info(f"  EPSG: {self.epsg_code}")
+
+        except ImportError as e:
+            raise ImportError(f"rasterio is required for terrain loading: {e}")
         except Exception as e:
-            raise RuntimeError(f"Failed to load DEM: {e}")
+            raise RuntimeError(f"Failed to load DEM {self.dem_file}: {e}")
 
     def get_elevation(self, lat: float, lon: float) -> float | None:
         """Get elevation from local DEM."""
@@ -233,19 +245,19 @@ class LocalDEMElevationSource(ElevationSource):
         try:
             # Convert lat/lon to pixel coordinates
             # This is simplified - proper implementation would handle coordinate transformations
-            pixel_x = int((lon - self.geotransform[0]) / self.geotransform[1])
-            pixel_y = int((lat - self.geotransform[3]) / self.geotransform[5])
+            pixel_x = int((lon - self.transform[0]) / self.transform[1])
+            pixel_y = int((lat - self.transform[3]) / self.transform[5])
 
             # Check bounds
-            if (pixel_x < 0 or pixel_x >= self.dataset.RasterXSize or
-                pixel_y < 0 or pixel_y >= self.dataset.RasterYSize):
+            if (pixel_x < 0 or pixel_x >= self.dataset.width or
+                pixel_y < 0 or pixel_y >= self.dataset.height):
                 return None
 
             # Read elevation
-            elevation = self.band.ReadAsArray(pixel_x, pixel_y, 1, 1)[0, 0]
+            elevation = self.dataset.read(1, window=((pixel_y, pixel_y + 1), (pixel_x, pixel_x + 1)))[0, 0]
 
             # Check for no data values
-            nodata = self.band.GetNoDataValue()
+            nodata = self.dataset.nodata
             if nodata is not None and elevation == nodata:
                 return None
 

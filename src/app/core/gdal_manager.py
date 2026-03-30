@@ -1,7 +1,7 @@
 """
-GDAL Manager - Centralized GDAL operations interface
+GDAL Manager - Centralized raster operations interface using rasterio
 
-Provides a singleton manager for all GDAL operations with:
+Provides a singleton manager for all raster operations with:
 - Centralized import error handling
 - Connection pooling for datasets
 - Cached metadata extraction
@@ -14,6 +14,8 @@ from typing import Any
 from dataclasses import dataclass
 
 import numpy as np
+import rasterio
+from rasterio.crs import CRS
 
 from app.core.constants import (
     SUPPORTED_IMAGE_EXTENSIONS,
@@ -42,7 +44,7 @@ class DatasetInfo:
 
 
 class GDALManager:
-    """Singleton manager for GDAL operations."""
+    """Singleton manager for raster operations using rasterio."""
 
     _instance: "GDALManager | None" = None
     _initialized: bool = False
@@ -56,46 +58,39 @@ class GDALManager:
         if GDALManager._initialized:
             return
 
-        self._gdal_available = False
-        self._osr_available = False
-        self.gdal = None
-        self.osr = None
+        self._rasterio_available = False
 
         # Cache for opened datasets
         self._dataset_cache: dict[Path, Any] = {}
         self._info_cache: dict[Path, DatasetInfo] = {}
 
-        self._try_import_gdal()
+        self._try_import_rasterio()
         GDALManager._initialized = True
 
-    def _try_import_gdal(self) -> bool:
-        """Try to import GDAL and set availability flag."""
+    def _try_import_rasterio(self) -> bool:
+        """Try to import rasterio and set availability flag."""
         try:
-            from osgeo import gdal, osr
-            self.gdal = gdal
-            self.osr = osr
-            self._gdal_available = True
-            self._osr_available = True
-            logger.info("GDAL initialized successfully")
+            import rasterio
+            self._rasterio_available = True
+            logger.info("Rasterio initialized successfully")
             return True
         except ImportError:
-            logger.warning("GDAL not available - geospatial features disabled")
-            self._gdal_available = False
-            self._osr_available = False
+            logger.warning("Rasterio not available - geospatial features disabled")
+            self._rasterio_available = False
             return False
 
     def is_available(self) -> bool:
-        """Check if GDAL is available."""
-        return self._gdal_available
+        """Check if rasterio is available."""
+        return self._rasterio_available
 
     def ensure_available(self) -> None:
-        """Raise error if GDAL is not available."""
-        if not self._gdal_available:
-            raise ImportError("GDAL is required for this operation but is not available")
+        """Raise error if rasterio is not available."""
+        if not self._rasterio_available:
+            raise ImportError("Rasterio is required for this operation but is not available")
 
     def can_load(self, file_path: str | Path) -> bool:
-        """Check if file can be loaded by GDAL."""
-        if not self._gdal_available:
+        """Check if file can be loaded by rasterio."""
+        if not self._rasterio_available:
             return False
 
         path = Path(file_path)
@@ -105,19 +100,16 @@ class GDALManager:
         if ext not in SUPPORTED_IMAGE_EXTENSIONS and ext not in SUPPORTED_REFERENCE_EXTENSIONS:
             return False
 
-        # Try to open with GDAL
+        # Try to open with rasterio
         try:
-            dataset = self.gdal.Open(str(path))
-            if dataset is not None:
-                del dataset
+            with rasterio.open(path) as src:
                 return True
-            return False
         except Exception:
             return False
 
     def get_info(self, file_path: str | Path) -> DatasetInfo | None:
         """Get metadata about a dataset (cached)."""
-        if not self._gdal_available:
+        if not self._rasterio_available:
             return None
 
         path = Path(file_path)
@@ -127,63 +119,60 @@ class GDALManager:
             return self._info_cache[path]
 
         try:
-            dataset = self.gdal.Open(str(path))
-            if dataset is None:
-                return None
+            with rasterio.open(path) as src:
+                # Get geotransform from transform
+                transform = src.transform
+                has_geotransform = transform.is_rectilinear
 
-            # Get geotransform
-            geotransform = dataset.GetGeoTransform()
-            has_geotransform = geotransform is not None and geotransform != (0, 1, 0, 0, 0, 1)
+                # Get projection
+                has_projection = src.crs is not None
+                projection = src.crs.to_wkt() if src.crs else None
 
-            # Get projection
-            projection = dataset.GetProjection()
-            has_projection = projection is not None and projection != ""
+                # Get EPSG code
+                epsg = src.crs.to_epsg() if src.crs else None
 
-            # Get EPSG code
-            epsg = None
-            if has_projection and self._osr_available:
-                try:
-                    srs = self.osr.SpatialReference()
-                    srs.ImportFromWkt(projection)
-                    epsg = srs.GetAuthorityCode(None)
-                    if epsg:
-                        epsg = int(epsg)
-                except Exception:
-                    pass
+                # Check for GCPs
+                gcps = src.gcps
+                has_gcps = gcps is not None and len(gcps[0]) > 0 if isinstance(gcps, tuple) else gcps is not None and len(gcps) > 0
+                gcp_count = len(gcps[0]) if has_gcps and isinstance(gcps, tuple) else len(gcps) if has_gcps else 0
 
-            # Check for GCPs
-            gcps = dataset.GetGCPs()
-            has_gcps = len(gcps) > 0
+                # Check for RPC metadata
+                rpc_metadata = src.tags().get('RPC_METADATA')
+                has_rpc = rpc_metadata is not None and len(rpc_metadata) > 0
 
-            # Check for RPC metadata
-            rpc_metadata = dataset.GetMetadata('RPC')
-            has_rpc = rpc_metadata is not None and len(rpc_metadata) > 0
+                # Get first band info
+                data_type = str(src.dtypes[0]) if src.dtypes else 'unknown'
 
-            # Get first band info
-            band = dataset.GetRasterBand(1)
-            data_type = self.gdal.GetDataTypeName(band.DataType)
+                # Build geotransform array
+                geotransform = [
+                    transform.c,     # origin x
+                    transform.a,     # pixel width
+                    transform.b,     # rotation (0 for north-up)
+                    transform.f,     # origin y
+                    transform.d,     # rotation (0 for north-up)
+                    transform.e,     # pixel height (negative)
+                ] if has_geotransform else None
 
-            info = DatasetInfo(
-                path=path,
-                width=dataset.RasterXSize,
-                height=dataset.RasterYSize,
-                band_count=dataset.RasterCount,
-                has_geotransform=has_geotransform,
-                has_projection=has_projection,
-                has_gcps=has_gcps,
-                gcp_count=len(gcps),
-                has_rpc=has_rpc,
-                driver=dataset.GetDriver().ShortName,
-                data_type=data_type,
-                epsg=epsg,
-                geotransform=geotransform if has_geotransform else None
-            )
+                info = DatasetInfo(
+                    path=path,
+                    width=src.width,
+                    height=src.height,
+                    band_count=src.count,
+                    has_geotransform=has_geotransform,
+                    has_projection=has_projection,
+                    has_gcps=has_gcps,
+                    gcp_count=gcp_count,
+                    has_rpc=has_rpc,
+                    driver=src.driver,
+                    data_type=data_type,
+                    epsg=epsg,
+                    geotransform=geotransform
+                )
 
-            # Cache and cleanup
-            self._info_cache[path] = info
-            del dataset
+                # Cache
+                self._info_cache[path] = info
 
-            return info
+                return info
 
         except Exception as e:
             logger.error(f"Error getting dataset info for {path}: {e}")
@@ -191,34 +180,28 @@ class GDALManager:
 
     def read_image(self, file_path: str | Path, bands: list[int] | None = None) -> np.ndarray | None:
         """Read image data as numpy array."""
-        if not self._gdal_available:
-            raise ImportError("GDAL is required for reading raster files")
+        if not self._rasterio_available:
+            raise ImportError("Rasterio is required for reading raster files")
 
         path = Path(file_path)
 
         try:
-            dataset = self.gdal.Open(str(path))
-            if dataset is None:
-                raise ValueError(f"Could not open file: {path}")
+            with rasterio.open(path) as src:
+                # Default to all bands if not specified
+                if bands is None:
+                    bands = list(range(1, src.count + 1))
 
-            # Default to all bands if not specified
-            if bands is None:
-                bands = list(range(1, dataset.RasterCount + 1))
+                # Read bands
+                band_data = []
+                for band_num in bands:
+                    data = src.read(band_num)
+                    band_data.append(data)
 
-            # Read bands
-            band_data = []
-            for band_num in bands:
-                band = dataset.GetRasterBand(band_num)
-                data = band.ReadAsArray()
-                band_data.append(data)
-
-            del dataset
-
-            # Stack bands
-            if len(band_data) == 1:
-                return band_data[0]
-            else:
-                return np.stack(band_data, axis=-1)
+                # Stack bands
+                if len(band_data) == 1:
+                    return band_data[0]
+                else:
+                    return np.stack(band_data, axis=-1)
 
         except Exception as e:
             logger.error(f"Error reading image {path}: {e}")
@@ -251,7 +234,7 @@ class GDALManager:
 
     def get_geotransform(self, file_path: str | Path) -> tuple | None:
         """Get geotransform for a dataset."""
-        if not self._gdal_available:
+        if not self._rasterio_available:
             return None
 
         info = self.get_info(file_path)
@@ -261,25 +244,31 @@ class GDALManager:
 
     def get_gcps(self, file_path: str | Path) -> list[dict]:
         """Get GCPs as list of dictionaries."""
-        if not self._gdal_available:
+        if not self._rasterio_available:
             return []
 
         try:
-            dataset = self.gdal.Open(str(file_path))
-            if dataset is None:
-                return []
+            with rasterio.open(file_path) as src:
+                gcps_data = src.gcps
 
-            gcps = dataset.GetGCPs()
-            result = []
-            for gcp in gcps:
-                result.append({
-                    'id': gcp.Id,
-                    'pixel': (gcp.GCPPixel, gcp.GCPLine),
-                    'geo': (gcp.GCPX, gcp.GCPY, gcp.GCPZ)
-                })
+                # gcps returns tuple (gcps_list, crs) or just list
+                if isinstance(gcps_data, tuple):
+                    gcps_list = gcps_data[0]
+                else:
+                    gcps_list = gcps_data
 
-            del dataset
-            return result
+                if not gcps_list:
+                    return []
+
+                result = []
+                for gcp in gcps_list:
+                    result.append({
+                        'id': gcp.id,
+                        'pixel': (gcp.col, gcp.row),
+                        'geo': (gcp.x, gcp.y, gcp.z)
+                    })
+
+                return result
 
         except Exception as e:
             logger.error(f"Error getting GCPs: {e}")
@@ -287,20 +276,20 @@ class GDALManager:
 
     def get_rpc_data(self, file_path: str | Path) -> dict | None:
         """Get RPC metadata if available."""
-        if not self._gdal_available:
+        if not self._rasterio_available:
             return None
 
         try:
-            dataset = self.gdal.Open(str(file_path))
-            if dataset is None:
+            with rasterio.open(file_path) as src:
+                rpc_metadata = src.tags().get('RPC_METADATA')
+
+                if rpc_metadata:
+                    import json
+                    try:
+                        return json.loads(rpc_metadata)
+                    except json.JSONDecodeError:
+                        return {'raw': rpc_metadata}
                 return None
-
-            rpc_metadata = dataset.GetMetadata('RPC')
-            del dataset
-
-            if rpc_metadata:
-                return dict(rpc_metadata)
-            return None
 
         except Exception as e:
             logger.error(f"Error getting RPC data: {e}")

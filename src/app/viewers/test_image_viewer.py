@@ -2,8 +2,10 @@
 Test Image Viewer - Left panel for displaying and selecting points in test imagery
 """
 
-import os
+import json
+
 import numpy as np
+import rasterio
 from pathlib import Path
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QPushButton, QScrollArea, QFrame)
@@ -128,36 +130,33 @@ class Test_Image_Viewer(QWidget):
             raise
 
     def load_geotiff(self, image_path):
-        """Load GeoTIFF using GDAL to preserve georeferencing."""
+        """Load GeoTIFF using rasterio to preserve georeferencing."""
         try:
-            from osgeo import gdal
+            with rasterio.open(image_path) as src:
+                # Read all bands
+                image_data = src.read()
 
-            dataset = gdal.Open(image_path)
-            if dataset is None:
-                raise ValueError(f"Could not open GeoTIFF: {image_path}")
+                # Convert from (bands, height, width) to (height, width, bands)
+                if image_data.ndim == 3:
+                    image_data = np.transpose(image_data, (1, 2, 0))
 
-            # Read image data
-            self.original_image = dataset.ReadAsArray()
-
-            # Handle different band configurations
-            if len(self.original_image.shape) == 3:
-                # RGB or multi-band - assume first 3 bands are RGB
-                if self.original_image.shape[0] >= 3:
-                    self.original_image = np.transpose(
-                        self.original_image[:3], (1, 2, 0)
-                    )
+                # Handle different band configurations
+                if len(image_data.shape) == 3:
+                    # RGB or multi-band - assume first 3 bands are RGB
+                    if image_data.shape[2] >= 3:
+                        self.original_image = image_data[:, :, :3]
+                    else:
+                        # Less than 3 bands, duplicate the bands
+                        self.original_image = np.zeros((*image_data.shape[:2], 3), dtype=image_data.dtype)
+                        for i in range(min(image_data.shape[2], 3)):
+                            self.original_image[:, :, i] = image_data[:, :, i]
                 else:
-                    self.original_image = np.transpose(
-                        self.original_image, (1, 2, 0)
-                    )
-            else:
-                # Single band - convert to 3-channel
-                self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_GRAY2BGR)
+                    # Single band - convert to 3-channel
+                    self.original_image = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
 
-            dataset = None
-
-        except ImportError:
+        except Exception:
             # Fallback to regular image loading
+            import cv2
             self.original_image = cv2.imread(image_path)
             if self.original_image is None:
                 raise ValueError(f"Could not load image: {image_path}")
@@ -165,33 +164,17 @@ class Test_Image_Viewer(QWidget):
     def extract_rpc_data(self, image_path):
         """Extract RPC data from GeoTIFF if available."""
         try:
-            from osgeo import gdal
+            with rasterio.open(image_path) as src:
+                # Try to get RPC data from tags
+                rpc_metadata = src.tags().get('RPC_METADATA')
 
-            dataset = gdal.Open(image_path)
-            if dataset is None:
-                return
+                if rpc_metadata:
+                    try:
+                        self.rpc_data = json.loads(rpc_metadata)
+                    except json.JSONDecodeError:
+                        self.rpc_data = {'raw': rpc_metadata}
+                    self.status_label.setText(f"Image loaded with RPC data")
 
-            # Try to get RPC data
-            rpc_data = {}
-            rpc_domain = dataset.GetDomain('RPC')
-
-            if rpc_domain:
-                for i in range(dataset.GetMetadataDomainCount()):
-                    domain = dataset.GetMetadataDomain(i)
-                    if domain == 'RPC':
-                        metadata = dataset.GetMetadata(domain)
-                        for key, value in metadata.items():
-                            rpc_data[key] = float(value) if '.' in value else int(value)
-                        break
-
-            if rpc_data:
-                self.rpc_data = rpc_data
-                self.status_label.setText(f"Image loaded with RPC data")
-
-            dataset = None
-
-        except ImportError:
-            pass  # GDAL not available
         except Exception:
             pass  # No RPC data found
 
@@ -256,7 +239,7 @@ class Test_Image_Viewer(QWidget):
             lat, lon, alt = self.ortho_transform(x, y)
 
         self.cursor_moved.emit(x, y, pixel_value, lat, lon, alt)
-        self.status_label.setText(f"GCP {gcp_id} selected")
+        self.status_label.setText(f"Cursor: ({x}, {y}) Pixel: {pixel_value}")
 
     def add_gcp_point(self, x, y, gcp_id):
         """Add a GCP point."""

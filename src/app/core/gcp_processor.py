@@ -292,7 +292,17 @@ class GCP_Processor:
                     continue
 
     def to_gdal_gcps(self):
-        """Convert to GDAL GCP format."""
-        from osgeo import gdal
+        """Convert to rasterio GCP format."""
+        from rasterio.control import GroundControlPoint
 
-        return [gcp.to_gdal_format() for gcp in self.gcps.values()]
+        return [
+            GroundControlPoint(
+                row=gcp.test_pixel.y,
+                col=gcp.test_pixel.x,
+                x=gcp.geographic.longitude,
+                y=gcp.geographic.latitude,
+                z=gcp.geographic.elevation or 0,
+                id=str(gcp.id)
+            )
+            for gcp in self.gcps.values()
+        ]

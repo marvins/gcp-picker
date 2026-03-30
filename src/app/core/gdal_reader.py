@@ -1,242 +1,178 @@
 """
-GDAL Reader - Read various raster formats including virtual rasters
+GDAL Reader - Read various raster formats using rasterio
 """
 
 from pathlib import Path
-from typing import Tuple, Optional, Dict, Any
+from typing import Tuple, Dict, Any
 import numpy as np
 
+import rasterio
+from rasterio.transform import from_bounds
+from rasterio.crs import CRS
+
 class GDALReader:
-    """Reader for GDAL-supported raster formats and virtual rasters."""
-    
+    """Reader for GDAL-supported raster formats using rasterio."""
+
     def __init__(self):
         pass
-        
-    def load_file(self, file_path: str) -> Tuple[Optional[np.ndarray], Optional[list], Optional[Dict]]:
-        """Load a raster file using GDAL."""
+
+    def load_file(self, file_path: str) -> Tuple[np.ndarray | None, list | None, Dict | None]:
+        """Load a raster file using rasterio."""
         try:
-            from osgeo import gdal, osr
-            
             file_path = Path(file_path)
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
-                
-            # Open the dataset
-            dataset = gdal.Open(str(file_path))
-            if dataset is None:
-                raise ValueError(f"Could not open file with GDAL: {file_path}")
-                
-            # Get geotransform
-            geotransform = dataset.GetGeoTransform()
-            if geotransform is None:
-                geotransform = [0, 1, 0, 0, 0, 1]  # Default identity transform
-                
-            # Read raster data
-            bands = []
-            for i in range(1, dataset.RasterCount + 1):
-                band = dataset.GetRasterBand(i)
-                band_data = band.ReadAsArray()
-                bands.append(band_data)
-                
-            # Stack bands
-            if len(bands) == 1:
-                image_data = bands[0]
-                # Convert single band to 3-channel for display
-                image_data = np.stack([image_data] * 3, axis=-1)
-            else:
-                image_data = np.stack(bands, axis=-1)
-                
-            # Get metadata
-            metadata = self._extract_metadata(dataset)
-            
-            # Clean up
-            dataset = None
-            
+
+            with rasterio.open(file_path) as src:
+                # Read all bands
+                image_data = src.read()
+
+                # Convert from (bands, height, width) to (height, width, bands)
+                if image_data.ndim == 3:
+                    image_data = np.transpose(image_data, (1, 2, 0))
+
+                # If single band, convert to 3-channel for display
+                if image_data.ndim == 2 or image_data.shape[-1] == 1:
+                    if image_data.ndim == 2:
+                        image_data = np.stack([image_data] * 3, axis=-1)
+                    else:
+                        band = image_data[:, :, 0]
+                        image_data = np.stack([band] * 3, axis=-1)
+
+                # Get geotransform
+                transform = src.transform
+                geotransform = [
+                    transform.c,     # origin x
+                    transform.a,     # pixel width
+                    transform.b,     # rotation (0 for north-up)
+                    transform.f,     # origin y
+                    transform.d,     # rotation (0 for north-up)
+                    transform.e,     # pixel height (negative)
+                ]
+
+                # Get metadata
+                metadata = self._extract_metadata(src)
+
             return image_data, geotransform, metadata
-            
+
         except ImportError:
-            raise ImportError("GDAL is required for reading raster files")
+            raise ImportError("rasterio is required for reading raster files")
         except Exception as e:
             raise RuntimeError(f"Failed to load raster file: {str(e)}")
-            
-    def _extract_metadata(self, dataset) -> Dict[str, Any]:
-        """Extract metadata from GDAL dataset."""
-        metadata = {}
-        
-        try:
-            # Basic dataset info
-            metadata['driver'] = dataset.GetDriver().ShortName
-            metadata['width'] = dataset.RasterXSize
-            metadata['height'] = dataset.RasterYSize
-            metadata['band_count'] = dataset.RasterCount
-            
-            # Projection
-            projection = dataset.GetProjection()
-            if projection:
-                metadata['projection'] = projection
-                
-                # Try to get EPSG code
-                try:
-                    from osgeo import osr
-                    srs = osr.SpatialReference()
-                    srs.ImportFromWkt(projection)
-                    epsg_code = srs.GetAuthorityCode(None)
-                    if epsg_code:
-                        metadata['epsg'] = int(epsg_code)
-                except:
-                    pass
-                    
-            # Geotransform
-            geotransform = dataset.GetGeoTransform()
-            if geotransform:
-                metadata['geotransform'] = geotransform
-                
-            # Metadata domains
-            for domain_name in ['IMAGE_STRUCTURE', 'SUBDATASETS', 'RPC', 'GCP']:
-                domain_metadata = dataset.GetMetadata(domain_name)
-                if domain_metadata:
-                    metadata[domain_name.lower()] = domain_metadata
-                    
-            # Band-specific metadata
-            band_metadata = []
-            for i in range(1, dataset.RasterCount + 1):
-                band = dataset.GetRasterBand(i)
-                band_info = {
-                    'band': i,
-                    'data_type': gdal.GetDataTypeName(band.DataType),
-                    'color_interpretation': gdal.GetColorInterpretationName(band.GetColorInterpretation())
-                }
-                
-                # Band statistics
-                stats = band.GetStatistics(True, True)
-                if stats and None not in stats:
-                    band_info['min'] = stats[0]
-                    band_info['max'] = stats[1]
-                    band_info['mean'] = stats[2]
-                    band_info['stddev'] = stats[3]
-                    
-                # No data value
-                nodata = band.GetNoDataValue()
-                if nodata is not None:
-                    band_info['nodata'] = nodata
-                    
-                band_metadata.append(band_info)
-                
-            metadata['bands'] = band_metadata
-            
-            # GCPs
-            gcps = dataset.GetGCPs()
-            if gcps:
-                metadata['gcp_count'] = len(gcps)
-                metadata['gcps'] = [
-                    {
-                        'id': gcp.Id,
-                        'pixel': (gcp.GCPPixel, gcp.GCPLine),
-                        'geo': (gcp.GCPX, gcp.GCPY, gcp.GCPZ)
-                    }
-                    for gcp in gcps
-                ]
-                
-        except Exception as e:
-            metadata['error'] = str(e)
-            
+
+    def _extract_metadata(self, src: rasterio.DatasetReader) -> Dict[str, Any]:
+        """Extract metadata from rasterio dataset."""
+        metadata = {
+            'driver': src.driver,
+            'width': src.width,
+            'height': src.height,
+            'band_count': src.count,
+        }
+
+        # CRS/Projection
+        if src.crs:
+            metadata['projection'] = src.crs.to_wkt()
+            epsg_code = src.crs.to_epsg()
+            if epsg_code:
+                metadata['epsg'] = epsg_code
+
+        # Geotransform
+        transform = src.transform
+        metadata['geotransform'] = [
+            transform.c, transform.a, transform.b,
+            transform.f, transform.d, transform.e
+        ]
+
+        # Tags/metadata
+        metadata['tags'] = src.tags()
+
+        # Band-specific metadata
+        band_metadata = []
+        for i in range(1, src.count + 1):
+            band = src.read(i)
+            band_tags = src.tags(i)
+
+            band_info = {
+                'band': i,
+                'data_type': str(src.dtypes[i-1]),
+                'color_interpretation': str(src.colorinterp[i-1]) if i-1 < len(src.colorinterp) else 'unknown',
+                'min': float(band.min()),
+                'max': float(band.max()),
+                'mean': float(band.mean()),
+                'stddev': float(band.std()),
+            }
+
+            # No data value
+            nodata = src.nodata
+            if nodata is not None:
+                band_info['nodata'] = nodata
+
+            band_metadata.append(band_info)
+
+        metadata['bands'] = band_metadata
+
         return metadata
-        
+
     def create_vrt(self, input_files: list, output_vrt: str) -> str:
         """Create a virtual raster from multiple files."""
         try:
-            from osgeo import gdal
-            
-            # Build VRT
-            vrt_options = gdal.BuildVRTOptions(
-                resolution='user',
-                xRes=1.0,  # Will be overridden by input resolution
-                yRes=1.0,
-                separate=False  # Bands from different files are stacked
-            )
-            
-            vrt_dataset = gdal.BuildVRT(output_vrt, input_files, options=vrt_options)
-            
-            if vrt_dataset is None:
-                raise RuntimeError(f"Failed to create VRT: {output_vrt}")
-                
-            # Clean up
-            vrt_dataset = None
-            
+            # Use rasterio's build_vrt
+            from rasterio.vrt import build_vrt
+
+            build_vrt(output_vrt, input_files)
+
             return output_vrt
-            
+
         except ImportError:
-            raise ImportError("GDAL is required for creating virtual rasters")
+            raise ImportError("rasterio is required for creating virtual rasters")
         except Exception as e:
             raise RuntimeError(f"Failed to create VRT: {str(e)}")
-            
+
     def get_overview_info(self, file_path: str) -> Dict[str, Any]:
         """Get overview (pyramid) information for a raster."""
         try:
-            from osgeo import gdal
-            
-            dataset = gdal.Open(file_path)
-            if dataset is None:
-                raise ValueError(f"Could not open file: {file_path}")
-                
-            overview_info = {}
-            
-            # Check for overviews
-            band = dataset.GetRasterBand(1)
-            overviews = band.GetOverviewCount()
-            
-            if overviews > 0:
-                overview_info['overview_count'] = overviews
-                overview_sizes = []
-                
-                for i in range(overviews):
-                    overview_band = band.GetOverview(i)
-                    overview_sizes.append((overview_band.XSize, overview_band.YSize))
-                    
-                overview_info['overview_sizes'] = overview_sizes
-            else:
-                overview_info['overview_count'] = 0
-                
-            # Clean up
-            dataset = None
-            
-            return overview_info
-            
-        except ImportError:
-            raise ImportError("GDAL is required")
+            with rasterio.open(file_path) as src:
+                overview_info = {}
+
+                # Check for overviews
+                if src.overviews(1):
+                    overviews = src.overviews(1)
+                    overview_info['overview_count'] = len(overviews)
+                    overview_sizes = []
+
+                    for ovr_idx in overviews:
+                        # Calculate overview size
+                        factor = 2 ** ovr_idx
+                        width = src.width // factor
+                        height = src.height // factor
+                        overview_sizes.append((width, height))
+
+                    overview_info['overview_sizes'] = overview_sizes
+                else:
+                    overview_info['overview_count'] = 0
+
+                return overview_info
+
         except Exception as e:
             raise RuntimeError(f"Failed to get overview info: {str(e)}")
-            
+
     def get_band_statistics(self, file_path: str, band: int = 1) -> Dict[str, float]:
         """Get statistics for a specific band."""
         try:
-            from osgeo import gdal
-            
-            dataset = gdal.Open(file_path)
-            if dataset is None:
-                raise ValueError(f"Could not open file: {file_path}")
-                
-            if band < 1 or band > dataset.RasterCount:
-                raise ValueError(f"Invalid band number: {band}")
-                
-            raster_band = dataset.GetRasterBand(band)
-            stats = raster_band.GetStatistics(True, True)
-            
-            statistics = {}
-            if stats and None not in stats:
+            with rasterio.open(file_path) as src:
+                if band < 1 or band > src.count:
+                    raise ValueError(f"Invalid band number: {band}")
+
+                band_data = src.read(band)
+
                 statistics = {
-                    'min': stats[0],
-                    'max': stats[1],
-                    'mean': stats[2],
-                    'stddev': stats[3]
+                    'min': float(band_data.min()),
+                    'max': float(band_data.max()),
+                    'mean': float(band_data.mean()),
+                    'stddev': float(band_data.std()),
                 }
-                
-            # Clean up
-            dataset = None
-            
-            return statistics
-            
-        except ImportError:
-            raise ImportError("GDAL is required")
+
+                return statistics
+
         except Exception as e:
             raise RuntimeError(f"Failed to get band statistics: {str(e)}")

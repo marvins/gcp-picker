@@ -382,30 +382,23 @@ class Reference_Viewer(QWidget):
         self.image_canvas.set_zoom(zoom_factor)
 
     def image_coords_to_geographic(self, x, y):
-        """Convert image coordinates to geographic coordinates."""
-        if self.reference_transform is None:
-            return x, y  # Return as-is if no transform
 
-        try:
-            from osgeo import osr
+    self.image_canvas.update()
 
-            # Create coordinate transformation
-            transform = self.reference_transform
+def on_point_clicked(self, x, y):
+    """Handle point click on reference image."""
+    if self.current_reference is None:
+        self.status_label.setText("No reference source loaded - please load a reference first")
+        return
 
-            # Convert pixel to map coordinates
-            map_x = transform[0] + x * transform[1] + y * transform[2]
-            map_y = transform[3] + x * transform[4] + y * transform[5]
+    # Convert pixel coordinates to image coordinates
+    img_x, img_y = self.image_canvas.pixel_to_image_coords(x, y)
 
-            # If using Web Mercator (EPSG:3857), convert to lat/lon
-            if self.current_reference.get('crs') == 'EPSG:3857':
-                lon = map_x / 20037508.34 * 180
-                lat = np.arctan(np.exp(map_y * np.pi / 20037508.34)) * 360 / np.pi - 90
-                return lon, lat
-            else:
-                return map_x, map_y
+    # Convert to geographic coordinates if transform is available
+    lon, lat = self.image_coords_to_geographic(img_x, img_y)
 
-        except Exception:
-            return x, y
+    # Emit signal
+    self.point_selected.emit(img_x, img_y, lon, lat)
 
     def geographic_to_image_coords(self, lon, lat):
         """Convert geographic coordinates to image coordinates."""

@@ -200,3 +200,12 @@
 2026-03-29 19:28:57,202 - app.core.imagery_api - ERROR - imagery_api.py:113 - get_imagery_info() - Error reading imagery info: GDAL is required for reading raster files
 2026-03-29 19:28:59,249 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:523 - set_center() - Set map center to (39.7392, -104.9903) zoom 12
 2026-03-29 19:28:59,249 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop
+2026-03-29 20:54:40,150 - gcp_picker.main - INFO - main.py:152 - main() - Starting GCP Picker application
+2026-03-29 20:54:40,288 - gcp_picker.main - INFO - main.py:167 - main() - Qt application initialized
+2026-03-29 20:54:40,372 - gcp_picker.main - INFO - main.py:176 - main() - Skipping QtWebEngine settings configuration
+2026-03-29 20:54:40,373 - gcp_picker.main - INFO - main.py:182 - main() - Creating main window
+2026-03-29 20:54:40,373 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:67 - __init__() - Initializing Leaflet Reference Viewer
+2026-03-29 20:54:40,373 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:80 - __init__() - Web components initialized successfully
+2026-03-29 20:54:40,375 - app.viewers.leaflet_reference_viewer - INFO - leaflet_reference_viewer.py:166 - setup_web_channel() - Web channel set up successfully
+2026-03-29 20:54:40,586 - gcp_picker.main - INFO - main.py:188 - main() - Loading collection from command line: /Users/marvin/Library/Mobile Documents/com~apple~CloudDocs/Desktop/collection/collection_config.toml
+2026-03-29 20:54:44,570 - gcp_picker.main - INFO - main.py:191 - main() - Application ready - entering main event loop
