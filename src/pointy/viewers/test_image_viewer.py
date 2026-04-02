@@ -11,10 +11,10 @@ import numpy as np
 import rasterio
 import cv2
 from PIL import Image
-from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QScrollArea, QFrame)
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
+from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                           QPushButton, QScrollArea, QFrame)
 
 #  Project Libraries
 from app.widgets.image_canvas import Image_Canvas

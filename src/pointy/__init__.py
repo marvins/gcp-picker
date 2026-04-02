@@ -1,8 +1,8 @@
 """
-GCP Picker - Ground Control Point Selection Application
+Pointy-McPointface - Where Coordinates Get Pointy!
 
-A comprehensive PyQt6-based GUI application for selecting ground control points
-between test imagery and reference sources with progressive orthorectification.
+A hilariously named PyQt6-based GUI application for selecting ground control points
+between test imagery and reference sources with progressive orthorectification capabilities.
 """
 
 from pathlib import Path
@@ -27,6 +27,6 @@ __author__ = _authors[0]["name"]
 __email__ = _authors[0]["email"]
 __license__ = _project["license"]["file"]
 
-from .main import main
+from .main_window import MainWindow
 
-__all__ = ["main", "get_version_info", "__version__", "__build_date__", "__git_hash__", "__author__", "__email__", "__license__"]
+__all__ = ["MainWindow", "get_version_info", "__version__", "__build_date__", "__git_hash__", "__author__", "__email__", "__license__"]

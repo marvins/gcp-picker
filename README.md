@@ -1,10 +1,10 @@
-# GCP Picker - Ground Control Point Selection Application
+# Pointy-McPointface - Ground-Control-Point Generator
 
-A comprehensive PyQt6-based GUI application for selecting ground control points between test imagery and reference sources with progressive orthorectification capabilities.
+A PyQt6-based GUI application for selecting ground control points between test imagery and reference sources with progressive orthorectification capabilities.
 
 ## Features
 
-- **Dual Viewer Interface**: Side-by-side display of test image and reference source
+- **Pointy Dual Viewer Interface**: Side-by-side display of test image and reference source
 - **Multiple Reference Sources**: Support for WMS, WMTS, and GDAL virtual rasters
 - **Interactive Point Selection**: Click to select corresponding points in both viewers
 - **GCP Management**: Add, edit, delete, and manage ground control points
@@ -146,26 +146,27 @@ sudo apt-get install gdal-bin libgdal-dev
 
 ### Project Structure
 ```
-gcp_picker/
+pointy_mcpointface/
 ├── main.py                 # Application entry point
 ├── requirements.txt        # Python dependencies
-├── app/
-│   ├── __init__.py
-│   ├── main_window.py     # Main application window
-│   ├── viewers/           # Image viewer components
-│   │   ├── test_image_viewer.py
-│   │   └── reference_viewer.py
-│   ├── widgets/           # UI widgets
-│   │   ├── image_canvas.py
-│   │   ├── zoom_controls.py
-│   │   ├── gcp_manager.py
-│   │   └── status_panel.py
-│   └── core/              # Core functionality
-│       ├── gcp.py
-│       ├── gcp_processor.py
-│       ├── orthorectifier.py
-│       ├── wms_client.py
-│       └── gdal_reader.py
+├── src/
+│   └── pointy/            # Main package directory
+│       ├── __init__.py
+│       ├── main_window.py     # Main application window
+│       ├── viewers/           # Image viewer components
+│       │   ├── test_image_viewer.py
+│       │   └── reference_viewer.py
+│       ├── widgets/           # UI widgets
+│       │   ├── image_canvas.py
+│       │   ├── zoom_controls.py
+│       │   ├── gcp_manager.py
+│       │   └── status_panel.py
+│       └── core/              # Core functionality
+│           ├── gcp.py
+│           ├── gcp_processor.py
+│           ├── orthorectifier.py
+│           ├── wms_client.py
+│           └── gdal_reader.py
 └── README.md
 ```
 

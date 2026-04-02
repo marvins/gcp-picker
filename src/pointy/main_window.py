@@ -8,13 +8,11 @@ from pathlib import Path
 
 #  Third-Party Libraries
 import numpy as np
-from qtpy.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QSplitter, QMenuBar, QStatusBar, QFileDialog,
-    QMessageBox, QToolBar, QAction
-)
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QIcon, QKeySequence, QGuiApplication
+from qtpy.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+                        QSplitter, QMenuBar, QStatusBar, QFileDialog,
+                        QMessageBox, QToolBar, QAction)
 
 #  Project Libraries
 from app.viewers.test_image_viewer import Test_Image_Viewer
@@ -32,7 +30,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GCP Picker - Ground Control Point Selection")
+        self.setWindowTitle("Pointy-McPointface - Where Coordinates Get Pointy!")
 
         # Get screen dimensions and set window size to fit
         screen = QGuiApplication.primaryScreen()

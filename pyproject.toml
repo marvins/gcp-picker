@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gcp-picker"
+name = "pointy_mcpointface"
 version = "1.0.0"
-description = "Ground Control Point Selection Application with Progressive Orthorectification"
+description = "Pointy-McPointface"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
@@ -14,7 +14,7 @@ authors = [
 maintainers = [
     {name = "Marvin Smith", email = "marvin.smith@terminus-geo.com"}
 ]
-keywords = ["gis", "remote-sensing", "photogrammetry", "georeferencing", "ground-control-points"]
+keywords = ["gis", "remote-sensing", "photogrammetry", "georeferencing", "ground-control-points", "pointy"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -42,7 +42,7 @@ dependencies = [
 ]
 
 [tool.setuptools.dynamic]
-version = {attr = "gcp_picker.__version__"}
+version = {attr = "pointy.__version__"}
 
 [project.optional-dependencies]
 dev = [
@@ -74,7 +74,7 @@ Repository = "https://github.com/gcp-picker/gcp-picker.git"
 "Bug Tracker" = "https://github.com/gcp-picker/gcp-picker/issues"
 
 [project.scripts]
-gcp-picker = "gcp_picker.main:main"
+pointy-mcpointface = "pointy.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -83,7 +83,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"gcp_picker" = [
+"pointy" = [
     "*.png",
     "*.jpg",
     "*.jpeg",

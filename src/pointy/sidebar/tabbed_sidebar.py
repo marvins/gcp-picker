@@ -3,8 +3,8 @@ Tabbed Sidebar - Sidebar with tabs for better organization
 """
 
 #  Third-Party Libraries
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea
 from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea
 
 #  Project Libraries
 from .components.gcp_panel import GCP_Panel
