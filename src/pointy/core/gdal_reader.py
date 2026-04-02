@@ -7,8 +7,6 @@ from typing import Tuple, Dict, Any
 import numpy as np
 
 import rasterio
-from rasterio.transform import from_bounds
-from rasterio.crs import CRS
 
 class GDALReader:
     """Reader for GDAL-supported raster formats using rasterio."""
@@ -90,7 +88,7 @@ class GDALReader:
         band_metadata = []
         for i in range(1, src.count + 1):
             band = src.read(i)
-            band_tags = src.tags(i)
+            src.tags(i)
 
             band_info = {
                 'band': i,

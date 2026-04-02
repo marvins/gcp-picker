@@ -382,23 +382,24 @@ class Reference_Viewer(QWidget):
         self.image_canvas.set_zoom(zoom_factor)
 
     def image_coords_to_geographic(self, x, y):
+        """Convert image coordinates to geographic coordinates."""
+        # TODO: Implement coordinate transformation
+        pass
 
-    self.image_canvas.update()
+    def on_point_clicked(self, x, y):
+        """Handle point click on reference image."""
+        if self.current_reference is None:
+            self.status_label.setText("No reference source loaded - please load a reference first")
+            return
 
-def on_point_clicked(self, x, y):
-    """Handle point click on reference image."""
-    if self.current_reference is None:
-        self.status_label.setText("No reference source loaded - please load a reference first")
-        return
+        # Convert pixel coordinates to image coordinates
+        img_x, img_y = self.image_canvas.pixel_to_image_coords(x, y)
 
-    # Convert pixel coordinates to image coordinates
-    img_x, img_y = self.image_canvas.pixel_to_image_coords(x, y)
+        # Convert to geographic coordinates if transform is available
+        lon, lat = self.image_coords_to_geographic(img_x, img_y)
 
-    # Convert to geographic coordinates if transform is available
-    lon, lat = self.image_coords_to_geographic(img_x, img_y)
-
-    # Emit signal
-    self.point_selected.emit(img_x, img_y, lon, lat)
+        # Emit signal
+        self.point_selected.emit(img_x, img_y, lon, lat)
 
     def geographic_to_image_coords(self, lon, lat):
         """Convert geographic coordinates to image coordinates."""

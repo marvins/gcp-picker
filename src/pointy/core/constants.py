@@ -13,8 +13,8 @@ import tempfile
 # =============================================================================
 
 VERSION = "1.0.0"
-APP_NAME = "GCP Picker"
-APP_USER_AGENT = "GCP-Picker/1.0"
+APP_NAME = "Pointy-McPointface"
+APP_USER_AGENT = "Pointy-McPointface/1.0"
 
 # =============================================================================
 # FILE EXTENSIONS
@@ -53,7 +53,7 @@ TIMEOUT_FEATURE_INFO = 30
 # CACHE DIRECTORIES
 # =============================================================================
 
-CACHE_BASE_DIR = Path(tempfile.gettempdir()) / "gcp_picker"
+CACHE_BASE_DIR = Path(tempfile.gettempdir()) / "pointy_mcpointface"
 CACHE_ELEVATION_DIR = CACHE_BASE_DIR / "elevation_cache"
 CACHE_TILE_DIR = CACHE_BASE_DIR / "aws_cache"
 CACHE_SRTM_DIR = CACHE_BASE_DIR / "srtm_cache"

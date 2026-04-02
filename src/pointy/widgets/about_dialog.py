@@ -1,18 +1,29 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    about_dialog.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 About Dialog - Display version and dependency information
 """
 
 import sys
-from pathlib import Path
-from typing import Any
 
 from qtpy.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTabWidget, QWidget, QTextEdit, QFrame, QGridLayout,
-    QSizePolicy
+    QTabWidget, QWidget, QTextEdit, QFrame, QGridLayout
 )
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QFont, QPixmap
+from qtpy.QtGui import QFont
 
 
 class AboutDialog(QDialog):
@@ -20,7 +31,7 @@ class AboutDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("About GCP Picker")
+        self.setWindowTitle("About Pointy-McPointface")
         self.setMinimumSize(500, 400)
         self.setup_ui()
         self.load_version_info()
@@ -35,7 +46,7 @@ class AboutDialog(QDialog):
         header_layout = QHBoxLayout()
 
         # Logo/Icon placeholder
-        logo_label = QLabel("GCP Picker")
+        logo_label = QLabel("Pointy-McPointface")
         logo_label.setFont(QFont("Arial", 20, QFont.Bold))
         header_layout.addWidget(logo_label)
 
@@ -88,7 +99,7 @@ class AboutDialog(QDialog):
 
         # App description
         desc_label = QLabel(
-            "GCP Picker is a comprehensive application for selecting "
+            "Pointy-McPointface is an application for selecting "
             "ground control points between test imagery and reference sources "
             "with progressive orthorectification."
         )
@@ -160,7 +171,7 @@ class AboutDialog(QDialog):
         """Load version and dependency information."""
         # Try to get version info from the package
         try:
-            from gcp_picker import get_version_info
+            from pointy import get_version_info
             version_info = get_version_info()
 
             self.version_label.setText(f"Version: {version_info.get('version', '--')}")
@@ -206,7 +217,7 @@ class AboutDialog(QDialog):
             f"Platform: {sys.platform}",
             f"Python Version: {sys.version}",
             f"Python Executable: {sys.executable}",
-            f"Python Path:",
+            "Python Path:",
         ]
 
         for path in sys.path[:5]:  # Show first 5 paths

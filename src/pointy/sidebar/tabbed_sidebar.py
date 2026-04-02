@@ -1,10 +1,23 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    tabbed_sidebar.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 Tabbed Sidebar - Sidebar with tabs for better organization
 """
 
 #  Third-Party Libraries
-from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, QScrollArea
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 #  Project Libraries
 from .components.gcp_panel import GCP_Panel

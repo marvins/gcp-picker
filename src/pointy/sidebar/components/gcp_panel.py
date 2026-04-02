@@ -3,10 +3,9 @@ GCP Panel - Ground Control Point management panel
 """
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QTableWidget, QTableWidgetItem, QPushButton,
-                           QHeaderView, QSpinBox, QDoubleSpinBox, QCheckBox)
-from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFont, QColor
+                           QPushButton)
+from qtpy.QtCore import Signal
+from qtpy.QtGui import QFont
 
 from app.widgets.gcp_manager import GCP_Manager
 

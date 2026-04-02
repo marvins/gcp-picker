@@ -97,7 +97,7 @@ class GDALStrategy(LoadStrategy):
             return False
 
         try:
-            with rasterio.open(path) as src:
+            with rasterio.open(path):
                 return True
         except Exception:
             return False

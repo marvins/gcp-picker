@@ -2,10 +2,9 @@
 Metadata Panel - Sidebar widget showing cursor position metadata
 """
 
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QLabel,
                            QGroupBox, QGridLayout, QFrame)
-from qtpy.QtCore import Qt
-from qtpy.QtGui import QFont, QPalette, QColor
+from qtpy.QtGui import QFont
 
 
 class Metadata_Panel(QWidget):

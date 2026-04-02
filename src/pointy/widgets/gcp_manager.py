@@ -4,11 +4,10 @@ GCP Manager Widget - Manage ground control points
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QTableWidget, QTableWidgetItem, QPushButton,
-                           QHeaderView, QSpinBox, QDoubleSpinBox, QCheckBox)
+                           QHeaderView, QCheckBox)
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QFont, QColor
 
-from app.core.gcp import GCP
 
 class GCP_Manager(QWidget):
     """Widget for managing ground control points."""

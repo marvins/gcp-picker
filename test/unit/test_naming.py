@@ -1,23 +1,31 @@
-#!/usr/bin/env python3
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    test_naming.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 Test script to verify naming conventions are working correctly.
 """
 
-import sys
-from pathlib import Path
+import pytest
 
-# Add src directory to path for imports
-src_path = Path(__file__).parent.parent.parent / "src"
-sys.path.insert(0, str(src_path))
-
-from gcp_picker.app.widgets.image_canvas import Image_Canvas
-from gcp_picker.app.widgets.zoom_controls import Zoom_Controls
-from gcp_picker.app.widgets.gcp_manager import GCP_Manager
-from gcp_picker.app.widgets.status_panel import Status_Panel
-from gcp_picker.app.viewers.test_image_viewer import Test_Image_Viewer
-from gcp_picker.app.viewers.reference_viewer import Reference_Viewer
-from gcp_picker.app.core.coordinate import Coordinate_Transformer
-from gcp_picker.app.core.gcp_processor import GCP_Processor
+from pointy.widgets.image_canvas import Image_Canvas
+from pointy.widgets.zoom_controls import Zoom_Controls
+from pointy.widgets.gcp_manager import GCP_Manager
+from pointy.widgets.status_panel import Status_Panel
+from pointy.viewers.test_image_viewer import Test_Image_Viewer
+from pointy.viewers.reference_viewer import Reference_Viewer
+from pointy.core.coordinate import Coordinate_Transformer
+from pointy.core.gcp_processor import GCP_Processor
 
 def test_naming_conventions():
     """Test that classes follow Rust-style naming conventions."""
@@ -73,6 +81,3 @@ def test_naming_conventions():
                 print(f"❌ {method_name} - Does not follow snake_case convention")
 
     print("\nNaming convention test complete!")
-
-if __name__ == "__main__":
-    test_naming_conventions()

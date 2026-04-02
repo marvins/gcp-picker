@@ -2,9 +2,9 @@
 Image Canvas Widget - Interactive image display with point selection, zoom, and pan
 """
 
-from qtpy.QtWidgets import QWidget, QLabel, QScrollArea
-from qtpy.QtCore import Qt, Signal, QPoint, QRect
-from qtpy.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent, QWheelEvent
+from qtpy.QtWidgets import QWidget, QScrollArea
+from qtpy.QtCore import Qt, Signal, QPoint
+from qtpy.QtGui import QPainter, QPen, QColor, QFont, QMouseEvent, QWheelEvent
 
 class Image_Canvas(QWidget):
     """Interactive image canvas with point selection capabilities."""

@@ -1,32 +1,44 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    main_window.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
-Main Window for GCP Picker Application
+Main Window for Pointy-McPointface Application
 """
 
 #  Python Standard Libraries
-import os
 from pathlib import Path
 
 #  Third-Party Libraries
 import numpy as np
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QIcon, QKeySequence, QGuiApplication
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QKeySequence, QGuiApplication
 from qtpy.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                        QSplitter, QMenuBar, QStatusBar, QFileDialog,
+                        QSplitter, QStatusBar, QFileDialog,
                         QMessageBox, QToolBar, QAction)
 
 #  Project Libraries
-from app.viewers.test_image_viewer import Test_Image_Viewer
-from app.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
-from app.widgets.gcp_manager import GCP_Manager
-from app.widgets.about_dialog import show_about_dialog
-from .sidebar.tabbed_sidebar import Tabbed_Sidebar
-from app.core.gcp_processor import GCP_Processor
-from app.core.orthorectifier import Orthorectifier
-from app.core.collection_manager import Collection_Manager, Collection_Info
-from app.core.imagery_api import Imagery_Loader
+from pointy.viewers.test_image_viewer import Test_Image_Viewer
+from pointy.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
+from pointy.widgets.about_dialog import show_about_dialog
+from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
+from pointy.core.gcp_processor import GCP_Processor
+from pointy.core.orthorectifier import Orthorectifier
+from pointy.core.collection_manager import Collection_Manager
+from pointy.core.imagery_api import Imagery_Loader
 
 class MainWindow(QMainWindow):
-    """Main application window for GCP Picker."""
+    """Main application window for Pointy-McPointface."""
 
     def __init__(self):
         super().__init__()
@@ -210,7 +222,7 @@ class MainWindow(QMainWindow):
         help_menu = menubar.addMenu('&Help')
 
         about_action = QAction('About', self)
-        about_action.setStatusTip('About GCP Picker')
+        about_action.setStatusTip('About Pointy-McPointface')
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
@@ -413,28 +425,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, 'Error', f'Orthorectification failed:\n{str(e)}')
             self.status_bar.showMessage('Orthorectification failed')
 
-    def on_test_point_selected(self, x, y):
-        """Handle point selection in test image."""
-        self.gcp_processor.set_pending_test_point(x, y)
-        self.status_bar.showMessage(f'Test point selected: ({x:.2f}, {y:.2f})')
-
-        # Check if we have a matching reference point
-        if self.gcp_processor.has_pending_reference_point():
-            self.create_gcp_from_pending_points()
-
-    def on_reference_point_selected(self, x, y, lon, lat):
-        """Handle point selection in reference image."""
-        self.gcp_processor.set_pending_reference_point(x, y, lon, lat)
-        self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
-
-        # Check if we have a matching test point
-        if self.gcp_processor.has_pending_test_point():
-            self.create_gcp_from_pending_points()
-
-    def on_test_image_loaded(self, image_path):
-        """Handle test image loading."""
-        self.gcp_processor.set_test_image_path(image_path)
-
     def _on_image_loaded_update_histogram(self, image_path):
         """Update histogram when image is loaded."""
         # Get image data from test viewer
@@ -465,10 +455,6 @@ class MainWindow(QMainWindow):
                         view_panel.max_pixel_spin.setEnabled(True)
 
                 view_panel.update_histogram(image_data)
-
-    def on_reference_loaded(self, reference_info):
-        """Handle reference source loading."""
-        self.gcp_processor.set_reference_info(reference_info)
 
     def on_gcp_lock_changed(self, is_locked: bool):
         """Handle GCP panel lock state changes."""
@@ -596,7 +582,7 @@ class MainWindow(QMainWindow):
             return
 
         # Check if image needs seed location
-        needs_seed = self.imagery_loader.needs_seed_location(first_image)
+        self.imagery_loader.needs_seed_location(first_image)
 
         # Get collection seed location
         seed_location = self.collection_manager.get_collection_seed_location()

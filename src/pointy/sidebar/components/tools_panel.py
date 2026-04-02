@@ -3,9 +3,8 @@ Tools Panel - Application tools and controls
 """
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QButtonGroup, QCheckBox, QSpinBox,
-                           QDoubleSpinBox, QComboBox, QGroupBox)
-from qtpy.QtCore import Signal, Qt
+                           QPushButton, QCheckBox, QComboBox, QGroupBox)
+from qtpy.QtCore import Signal
 from qtpy.QtGui import QFont
 
 

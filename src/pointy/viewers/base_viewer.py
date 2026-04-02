@@ -9,15 +9,13 @@ Provides common functionality for both test and reference image viewers includin
 """
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any
 
 import numpy as np
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea
-from qtpy.QtCore import Signal, Qt
+from qtpy.QtWidgets import QWidget, QLabel
+from qtpy.QtCore import Signal
 from qtpy.QtGui import QImage, QPixmap
 
-from app.core.coordinate import PixelCoordinate, GeographicCoordinate
 
 
 class BaseViewer(ABC, QWidget):

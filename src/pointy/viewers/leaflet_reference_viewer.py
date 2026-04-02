@@ -3,29 +3,21 @@ Leaflet Reference Viewer - Web-based map viewer with Leaflet and ArcGIS services
 """
 
 # Standard library imports
-import json
 import os
 import logging
 import tempfile
-from pathlib import Path
-from typing import Optional, Dict, Any
 
 # Third-party imports
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QComboBox, QLineEdit, QFrame, QSizePolicy)
-from qtpy.QtCore import Qt, Signal, QTimer, QUrl, QObject, Slot
+                           QComboBox, QSizePolicy)
+from qtpy.QtCore import Qt, Signal, QUrl, QObject, Slot
 from qtpy.QtGui import QFont
 from qtpy.QtWebEngineWidgets import QWebEngineView
 from qtpy.QtWebChannel import QWebChannel
 import folium
-import branca
 from qtpy.QtWebEngineCore import QWebEngineSettings
 
 # Project imports
-from app.widgets.image_canvas import Image_Canvas
-from app.widgets.zoom_controls import Zoom_Controls
-from app.core.wms_client import WMSClient
-from app.core.gdal_reader import GDALReader
 from app.core.config_manager import get_config_manager
 
 
@@ -424,7 +416,7 @@ class Leaflet_Reference_Viewer(QWidget):
         """
 
         if self.web_view is not None:
-            self.logger.debug(f"Executing JavaScript to change imagery service")
+            self.logger.debug("Executing JavaScript to change imagery service")
             self.web_view.page().runJavaScript(js)
         else:
             self.logger.error("Web view not available, cannot change imagery service")

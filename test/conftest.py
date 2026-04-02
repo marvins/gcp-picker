@@ -1,17 +1,23 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    conftest.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
-Pytest configuration and fixtures for GCP Picker tests.
+Pytest configuration and fixtures for Pointy-McPointface tests.
 """
-
-import sys
-from pathlib import Path
-
-# Add src directory to Python path for all tests
-src_path = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_path))
 
 import pytest
 from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import QTimer
 
 
 @pytest.fixture(scope="session")
@@ -59,16 +65,15 @@ def sample_pixel_coordinates():
 @pytest.fixture(autouse=True)
 def mock_elevation_api():
     """Mock elevation API calls to avoid network dependencies."""
-    import sys
-    from unittest.mock import Mock, patch
-    
+    from unittest.mock import patch
+
     # Mock elevation responses
     def mock_elevation(lat, lon):
         # Simple mock: return elevation based on latitude
         return max(0, lat * 100)  # Rough approximation
-    
+
     # Patch the elevation function
-    with patch('gcp_picker.app.core.terrain.elevation', side_effect=mock_elevation):
+    with patch('pointy.core.terrain.elevation', side_effect=mock_elevation):
         yield
 
 
@@ -101,13 +106,12 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to add marks."""
-    import os
-    
+
     # Add GUI marker to tests that import Qt modules
     for item in items:
         if "qtpy" in str(item.fspath) or any("qt" in mark.name for mark in item.iter_markers()):
             item.add_marker(pytest.mark.gui)
-            
+
         # Add network marker to tests that might make network calls
         if "terrain" in str(item.fspath) and "elevation" in str(item.fspath):
             item.add_marker(pytest.mark.network)

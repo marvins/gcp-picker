@@ -3,7 +3,6 @@ Orthorectifier - RPC-based orthorectification with progressive updates
 """
 
 import os
-import tempfile
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -90,7 +89,6 @@ class Orthorectifier:
 
     def _setup_rpc_georeferencing(self, dataset, rpc_data: Dict, gcps):
         """Setup RPC-based georeferencing."""
-        from osgeo import gdal
 
         # Add RPC metadata
         rpc_metadata = {}
@@ -226,7 +224,6 @@ class Orthorectifier:
     def update_progressive(self, image_path: str, gcps: List[GCP], output_path: str):
         """Perform progressive orthorectification (updates existing file)."""
         try:
-            from osgeo import gdal
 
             # Check if output file exists
             if os.path.exists(output_path):

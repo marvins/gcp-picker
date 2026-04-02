@@ -2,8 +2,7 @@
 Status Panel Widget - Display status and GCP information
 """
 
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame
-from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame
 from qtpy.QtGui import QFont
 
 class Status_Panel(QWidget):

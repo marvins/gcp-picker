@@ -1,5 +1,5 @@
 """
-Sidebar Components - Modular sidebar widgets for GCP Picker
+Sidebar Components - Modular sidebar widgets for Pointy-McPointface
 """
 
 from .main_sidebar import Main_Sidebar

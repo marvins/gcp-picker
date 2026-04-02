@@ -2,12 +2,10 @@
 Collection Manager - Manage collection state and operations
 """
 
-import os
-import json
 import tomllib
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from qtpy.QtCore import QObject, Signal
 
 from app.core.coordinate import Geographic

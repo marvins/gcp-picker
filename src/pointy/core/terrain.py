@@ -1,8 +1,22 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    terrain.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
-Terrain Management API
+Terrain Elevation Module
 
-This module provides elevation data access for ground control point selection.
-It supports multiple elevation data sources and provides caching for performance.
+This module provides elevation data access from multiple sources including SRTM and AWS Terrain Tiles.
+It supports caching and coordinate-based elevation queries.
 """
 
 import os
@@ -18,7 +32,6 @@ import rasterio
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from app.core.coordinate import Geographic, Coordinate_Transformer
 
 
 @dataclass
@@ -56,7 +69,7 @@ class SRTMElevationSource(ElevationSource):
     def __init__(self):
         super().__init__("SRTM 30m")
         self.base_url = "https://earthengine.googleapis.com/dataset/export/USGS/SRTMGL1_003"
-        self.cache_dir = Path(tempfile.gettempdir()) / "gcp_picker" / "srtm_cache"
+        self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "srtm_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def get_elevation(self, lat: float, lon: float) -> float | None:
@@ -70,7 +83,7 @@ class SRTMElevationSource(ElevationSource):
                     return data.get('elevation')
 
             # Query Earth Engine API
-            url = f"https://maps.googleapis.com/maps/api/elevation/json"
+            url = "https://maps.googleapis.com/maps/api/elevation/json"
             params = {
                 'locations': f'{lat},{lon}',
                 'key': os.environ.get('GOOGLE_ELEVATION_API_KEY', '')
@@ -145,7 +158,7 @@ class AWSElevationSource(ElevationSource):
     def __init__(self):
         super().__init__("AWS Terrain Tiles")
         self.base_url = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
-        self.cache_dir = Path(tempfile.gettempdir()) / "gcp_picker" / "aws_cache"
+        self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "aws_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def get_elevation(self, lat: float, lon: float) -> float | None:
@@ -275,7 +288,7 @@ class Manager:
     def __init__(self, cache_enabled: bool = True):
         """Initialize terrain manager."""
         self.cache_enabled = cache_enabled
-        self.cache_file = Path(tempfile.gettempdir()) / "gcp_picker" / "elevation_cache.pkl"
+        self.cache_file = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "elevation_cache.pkl"
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Initialize elevation sources

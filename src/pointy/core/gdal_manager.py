@@ -15,7 +15,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import rasterio
-from rasterio.crs import CRS
 
 from app.core.constants import (
     SUPPORTED_IMAGE_EXTENSIONS,
@@ -102,7 +101,7 @@ class GDALManager:
 
         # Try to open with rasterio
         try:
-            with rasterio.open(path) as src:
+            with rasterio.open(path):
                 return True
         except Exception:
             return False
@@ -126,7 +125,7 @@ class GDALManager:
 
                 # Get projection
                 has_projection = src.crs is not None
-                projection = src.crs.to_wkt() if src.crs else None
+                src.crs.to_wkt() if src.crs else None
 
                 # Get EPSG code
                 epsg = src.crs.to_epsg() if src.crs else None

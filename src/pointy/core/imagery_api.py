@@ -191,7 +191,7 @@ class Imagery_Loader:
     def supports_format(self, file_path: str | Path) -> bool:
         """Check if file format is supported by rasterio."""
         try:
-            with rasterio.open(file_path) as src:
+            with rasterio.open(file_path):
                 return True
         except (ImportError, rasterio.RasterioIOError, Exception):
             return False

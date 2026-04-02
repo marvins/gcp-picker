@@ -1,16 +1,29 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    view_control_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 Image View Control Panel - Sidebar widget for test imagery display controls
 """
 
 #  Third-Party Libraries
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QSpinBox, QDoubleSpinBox, QCheckBox,
+                           QPushButton, QSpinBox, QCheckBox,
                            QSlider, QGroupBox, QGridLayout)
 
 

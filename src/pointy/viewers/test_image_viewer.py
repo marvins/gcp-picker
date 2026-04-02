@@ -1,3 +1,17 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    test_image_viewer.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 Test Image Viewer - Left panel for displaying and selecting points in test imagery
 """
@@ -11,13 +25,13 @@ import numpy as np
 import rasterio
 import cv2
 from PIL import Image
-from qtpy.QtCore import Qt, Signal, QPoint
-from qtpy.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
+from qtpy.QtCore import Qt, Signal
+from qtpy.QtGui import QImage, QPixmap, QFont
 from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QScrollArea, QFrame)
+                           QPushButton, QScrollArea)
 
 #  Project Libraries
-from app.widgets.image_canvas import Image_Canvas
+from pointy.widgets.image_canvas import Image_Canvas
 
 class Test_Image_Viewer(QWidget):
     """Viewer for test image with point selection capabilities."""
@@ -193,7 +207,7 @@ class Test_Image_Viewer(QWidget):
                         self.rpc_data = json.loads(rpc_metadata)
                     except json.JSONDecodeError:
                         self.rpc_data = {'raw': rpc_metadata}
-                    self.status_label.setText(f"Image loaded with RPC data")
+                    self.status_label.setText("Image loaded with RPC data")
 
         except Exception:
             pass  # No RPC data found

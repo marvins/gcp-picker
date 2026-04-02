@@ -1,7 +1,21 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2025 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    coordinate.py
+#    Author:  Marvin Smith
+#    Date:    4/1/2026
+#
 """
 Coordinate Types and Transformations
 
-This module defines coordinate types and transformations used throughout the GCP Picker application.
+This module defines coordinate types and transformations used throughout the Pointy-McPointface application.
 It supports various coordinate systems and provides utilities for coordinate conversion.
 """
 
@@ -13,7 +27,7 @@ import numpy as np
 from pyproj import Transformer, CRS
 
 
-class CoordinateSystem(Enum):
+class Coordinate_System(Enum):
     """Supported coordinate systems."""
     WGS84 = "EPSG:4326"           # Geographic coordinates (lat/lon)
     WEB_MERCATOR = "EPSG:3857"     # Web Mercator (used by many web maps)
@@ -72,7 +86,7 @@ class UTM:
     easting_m: float
     northing_m: float
     altitude_m: Optional[float] = None
-    crs: str = CoordinateSystem.WEB_MERCATOR.value
+    crs: str = "EPSG:4326"  # Default to WGS84, should be set to appropriate UTM zone
 
     def to_tuple(self) -> tuple[float, float]:
         """Convert to (easting, northing) tuple."""
@@ -172,11 +186,11 @@ class Coordinate_Transformer:
     def geographic_to_projected(
         self,
         geo: Geographic,
-        target_crs: str = CoordinateSystem.WEB_MERCATOR.value
+        target_crs: str = Coordinate_System.WEB_MERCATOR.value
     ) -> UTM:
         """Convert geographic to projected coordinates."""
         transformer = self._get_transformer(
-            CoordinateSystem.WGS84.value, target_crs
+            Coordinate_System.WGS84.value, target_crs
         )
 
         if geo.elevation is not None:
@@ -197,7 +211,7 @@ class Coordinate_Transformer:
     ) -> Geographic:
         """Convert projected to geographic coordinates."""
         transformer = self._get_transformer(
-            proj.crs, CoordinateSystem.WGS84.value
+            proj.crs, Coordinate_System.WGS84.value
         )
 
         if proj.elevation is not None:
@@ -296,7 +310,7 @@ def create_geographic(lat_deg: float, lon_deg: float, alt_m: Optional[float] = N
 def create_projected(
     easting_m: float,
     northing_m: float,
-    crs: str = CoordinateSystem.WEB_MERCATOR.value,
+    crs: str = "EPSG:4326",  # Default to WGS84, should be set to appropriate projected CRS
     alt_m: Optional[float] = None
 ) -> UTM:
     """Create a projected coordinate."""
