@@ -498,26 +498,45 @@ class Leaflet_Reference_Viewer(QWidget):
             return {}
         return self.current_reference.copy()
 
-    def set_center(self, lat: float, lon: float, zoom: int = 12):
-        """Center the map on a specific location.
-
-        Args:
-            lat: Latitude to center on
-            lon: Longitude to center on
-            zoom: Zoom level (default: 12)
-        """
+    def recreate_map_with_center(self, lat: float, lon: float, zoom: int = 12):
+        """Recreate the map centered on a specific location."""
         if self.web_view is None:
-            self.logger.warning("Web view not available, cannot set center")
+            self.logger.warning("Web view not available, cannot recreate map")
             return
 
-        js = f"""
-        if (window.map) {{
-            window.map.setView([{lat}, {lon}], {zoom});
-            console.log("Map centered on: {lat}, {lon} at zoom {zoom}");
-        }} else {{
-            console.error("Map not available for set_center");
-        }}
-        """
-        self.web_view.page().runJavaScript(js)
-        self.status_label.setText(f"Center: ({lat:.6f}, {lon:.6f})")
-        self.logger.info(f"Set map center to ({lat}, {lon}) zoom {zoom}")
+        self.logger.info(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}")
+
+        # Create a new folium map centered on the specified location
+        m = folium.Map(
+            location=[lat, lon],
+            zoom_start=zoom,
+            tiles=None
+        )
+
+        # Add default imagery service from config
+        default_service = self.config_manager.get_default_service()
+        service = self.imagery_services.get(default_service, {})
+        if service.get("type") == "xyz":
+            folium.TileLayer(
+                tiles=service["url"],
+                attr=service["attribution"],
+                name=service.get("name", "Base Map")
+            ).add_to(m)
+
+        # Add JavaScript for point clicking and communication
+        map_html = self._add_custom_javascript(m.get_root().render())
+
+        # Clean up old map file
+        if hasattr(self, '_map_html_path') and self._map_html_path:
+            try:
+                os.unlink(self._map_html_path)
+            except OSError:
+                pass
+
+        # Load map via local file URL
+        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as map_file:
+            map_file.write(map_html)
+            self._map_html_path = map_file.name
+
+        self.web_view.setUrl(QUrl.fromLocalFile(self._map_html_path))
+        self.status_label.setText(f"Map centered on ({lat:.4f}, {lon:.4f})")

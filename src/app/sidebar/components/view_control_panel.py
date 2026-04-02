@@ -2,16 +2,16 @@
 Image View Control Panel - Sidebar widget for test imagery display controls
 """
 
+#  Third-Party Libraries
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from qtpy.QtCore import Signal, Qt
+from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QPushButton, QSpinBox, QDoubleSpinBox, QCheckBox,
                            QSlider, QGroupBox, QGridLayout)
-from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QFont
-
-import numpy as np
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import matplotlib.pyplot as plt
 
 
 class Image_View_Control_Panel(QWidget):
@@ -53,7 +53,7 @@ class Image_View_Control_Panel(QWidget):
         # Min pixel
         range_layout.addWidget(QLabel("Min:"), 0, 0)
         self.min_pixel_spin = QSpinBox()
-        self.min_pixel_spin.setRange(0, 65535)
+        self.min_pixel_spin.setRange(0, 65535)  # Support up to 16-bit
         self.min_pixel_spin.setValue(0)
         self.min_pixel_spin.setEnabled(False)
         self.min_pixel_spin.valueChanged.connect(self._on_min_pixel_changed)
@@ -62,7 +62,7 @@ class Image_View_Control_Panel(QWidget):
         # Max pixel
         range_layout.addWidget(QLabel("Max:"), 1, 0)
         self.max_pixel_spin = QSpinBox()
-        self.max_pixel_spin.setRange(0, 65535)
+        self.max_pixel_spin.setRange(0, 65535)  # Support up to 16-bit
         self.max_pixel_spin.setValue(255)
         self.max_pixel_spin.setEnabled(False)
         self.max_pixel_spin.valueChanged.connect(self._on_max_pixel_changed)
@@ -100,9 +100,11 @@ class Image_View_Control_Panel(QWidget):
         hist_group = QGroupBox("Histogram")
         hist_layout = QVBoxLayout(hist_group)
 
-        self.hist_figure = Figure(figsize=(4, 2), dpi=100)
+        # Create larger figure with better aspect ratio
+        self.hist_figure = Figure(figsize=(5, 3), dpi=80)
         self.hist_canvas = FigureCanvas(self.hist_figure)
-        self.hist_canvas.setMinimumHeight(100)
+        self.hist_canvas.setMinimumHeight(180)  # Increased from 100px
+        self.hist_canvas.setSizePolicy(self.sizePolicy().Expanding, self.sizePolicy().Expanding)
         hist_layout.addWidget(self.hist_canvas)
 
         layout.addWidget(hist_group)
@@ -251,6 +253,7 @@ class Image_View_Control_Panel(QWidget):
             image_data: Numpy array of image pixel values
             num_bins: Number of histogram bins (default 256)
         """
+        # Clear the figure completely
         self.hist_figure.clear()
         ax = self.hist_figure.add_subplot(111)
 
@@ -264,34 +267,67 @@ class Image_View_Control_Panel(QWidget):
         else:
             data = image_data
 
-        # Flatten and remove NaN values
+        # Flatten and remove NaN/inf values
         data = data.flatten()
-        data = data[~np.isnan(data)]
+        data = data[np.isfinite(data)]  # Remove both NaN and inf
 
         if len(data) > 0:
-            # Calculate histogram
-            counts, bins, patches = ax.hist(data, bins=num_bins, color='#3498db', alpha=0.7, edgecolor='none')
+            # Get actual data range
+            data_min, data_max = np.min(data), np.max(data)
+
+            # Handle case where all values are the same
+            if data_max == data_min:
+                data_max = data_min + 1
+
+            # Smart bin calculation
+            data_range = data_max - data_min
+            if data_range <= 65535:
+                # Use fewer bins for smaller ranges to avoid empty bins
+                ideal_bins = min(256, max(50, int(np.sqrt(len(data)))))
+                num_bins = min(ideal_bins, int(data_range + 1))
+            else:
+                num_bins = 256
+
+            # Calculate histogram with range specification
+            counts, bins, patches = ax.hist(data, bins=num_bins, range=(data_min, data_max),
+                                         color='#3498db', alpha=0.7, edgecolor='none')
 
             # Add min/max vertical lines
             current_min = self.min_pixel_spin.value()
             current_max = self.max_pixel_spin.value()
 
-            ax.axvline(x=current_min, color='#e74c3c', linestyle='--', linewidth=2, label=f'Min: {current_min}')
-            ax.axvline(x=current_max, color='#2ecc71', linestyle='--', linewidth=2, label=f'Max: {current_max}')
+            # Only show lines if they're within the data range
+            if current_min >= data_min and current_min <= data_max:
+                ax.axvline(x=current_min, color='#e74c3c', linestyle='--', linewidth=2, label=f'Min: {current_min}')
+            if current_max >= data_min and current_max <= data_max:
+                ax.axvline(x=current_max, color='#2ecc71', linestyle='--', linewidth=2, label=f'Max: {current_max}')
 
-            # Styling
-            ax.set_xlabel('Pixel Value')
-            ax.set_ylabel('Frequency')
-            ax.set_title('Pixel Distribution')
-            ax.legend(loc='upper right', fontsize=8)
+            # Improved styling
+            ax.set_xlabel('Pixel Value', fontsize=9)
+            ax.set_ylabel('Frequency', fontsize=9)
+            ax.set_title(f'Pixel Distribution (Range: {data_min:.0f}-{data_max:.0f})', fontsize=10)
+
+            # Only show legend if we have lines
+            if (current_min >= data_min and current_min <= data_max) or \
+               (current_max >= data_min and current_max <= data_max):
+                ax.legend(loc='upper right', fontsize=8)
+
             ax.grid(True, alpha=0.3)
 
-            # Set x-axis limits based on data range
-            data_min, data_max = np.min(data), np.max(data)
-            margin = (data_max - data_min) * 0.05
-            ax.set_xlim(data_min - margin, data_max + margin)
+            # Set reasonable axis limits
+            ax.set_xlim(data_min, data_max)
 
-        self.hist_figure.tight_layout()
+            # Format y-axis to avoid scientific notation for large numbers
+            ax.ticklabel_format(style='plain', axis='y')
+
+        else:
+            # No valid data
+            ax.text(0.5, 0.5, 'No valid pixel data', ha='center', va='center',
+                   transform=ax.transAxes, fontsize=10)
+            ax.set_title('No Data Available', fontsize=10)
+
+        # Use tight layout with padding
+        self.hist_figure.tight_layout(pad=0.5)
         self.hist_canvas.draw()
 
     def update_histogram_markers(self):

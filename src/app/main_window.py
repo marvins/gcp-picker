@@ -2,21 +2,26 @@
 Main Window for GCP Picker Application
 """
 
+#  Python Standard Libraries
 import os
 from pathlib import Path
+
+#  Third-Party Libraries
+import numpy as np
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QSplitter, QMenuBar, QStatusBar, QFileDialog,
     QMessageBox, QToolBar, QAction
 )
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QIcon, QKeySequence
+from qtpy.QtGui import QIcon, QKeySequence, QGuiApplication
 
+#  Project Libraries
 from app.viewers.test_image_viewer import Test_Image_Viewer
 from app.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
 from app.widgets.gcp_manager import GCP_Manager
 from app.widgets.about_dialog import show_about_dialog
-from app.sidebar.main_sidebar import Main_Sidebar
+from .sidebar.tabbed_sidebar import Tabbed_Sidebar
 from app.core.gcp_processor import GCP_Processor
 from app.core.orthorectifier import Orthorectifier
 from app.core.collection_manager import Collection_Manager, Collection_Info
@@ -28,7 +33,20 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("GCP Picker - Ground Control Point Selection")
-        self.setGeometry(100, 100, 1400, 800)
+
+        # Get screen dimensions and set window size to fit
+        screen = QGuiApplication.primaryScreen()
+        screen_geometry = screen.availableGeometry()
+
+        # Set window size to 80% of screen size, with minimum dimensions
+        window_width = min(int(screen_geometry.width() * 0.8), 1200)
+        window_height = min(int(screen_geometry.height() * 0.8), 800)
+
+        # Center the window on screen
+        x = (screen_geometry.width() - window_width) // 2
+        y = (screen_geometry.height() - window_height) // 2
+
+        self.setGeometry(x, y, window_width, window_height)
 
         # Initialize core components
         self.gcp_processor = GCP_Processor()
@@ -75,8 +93,8 @@ class MainWindow(QMainWindow):
 
         self.image_splitter.addWidget(test_container)
 
-        # Set initial splitter sizes (make panels smaller and equal)
-        self.image_splitter.setSizes([500, 500])
+        # Set initial splitter sizes (reference viewer 35%, test viewer 65%)
+        self.image_splitter.setSizes([350, 650])
 
         # Create vertical splitter for main content and sidebar
         self.main_splitter = QSplitter(Qt.Horizontal)
@@ -84,10 +102,14 @@ class MainWindow(QMainWindow):
         # Add the image splitter to the left
         self.main_splitter.addWidget(self.image_splitter)
 
-        # Create sidebar widget using Main_Sidebar
-        self.sidebar = Main_Sidebar()
-        self.gcp_manager = self.sidebar.get_gcp_panel().gcp_manager
+        # Create sidebar widget using Tabbed_Sidebar
+        self.sidebar = Tabbed_Sidebar()
+        self.gcp_panel = self.sidebar.get_gcp_panel()
+        self.gcp_manager = self.gcp_panel.gcp_manager
         self.status_panel = self.sidebar.get_status_panel()
+
+        # Connect GCP panel lock signal
+        self.gcp_panel.lock_state_changed.connect(self.on_gcp_lock_changed)
 
         # Connect collection nav panel signals
         nav_panel = self.sidebar.get_collection_nav_panel()
@@ -421,11 +443,41 @@ class MainWindow(QMainWindow):
         if hasattr(self.test_viewer, 'get_image_data'):
             image_data = self.test_viewer.get_image_data()
             if image_data is not None:
-                self.sidebar.get_view_control_panel().update_histogram(image_data)
+                view_panel = self.sidebar.get_view_control_panel()
+
+                # Set pixel range based on image bit depth
+                if hasattr(self.test_viewer, 'bit_depth'):
+                    bit_depth = self.test_viewer.bit_depth
+                    max_pixel = (2 ** bit_depth) - 1
+
+                    # Set the range and get actual data min/max
+                    view_panel.set_min_max_range(0, max_pixel)
+
+                    # Calculate actual pixel range from the image data
+                    actual_min = int(np.min(image_data))
+                    actual_max = int(np.max(image_data))
+
+                    # Set the spin boxes to actual data range
+                    view_panel.min_pixel_spin.setValue(actual_min)
+                    view_panel.max_pixel_spin.setValue(actual_max)
+
+                    # Enable the controls for manual adjustment
+                    if not view_panel.auto_stretch_checkbox.isChecked():
+                        view_panel.min_pixel_spin.setEnabled(True)
+                        view_panel.max_pixel_spin.setEnabled(True)
+
+                view_panel.update_histogram(image_data)
 
     def on_reference_loaded(self, reference_info):
         """Handle reference source loading."""
         self.gcp_processor.set_reference_info(reference_info)
+
+    def on_gcp_lock_changed(self, is_locked: bool):
+        """Handle GCP panel lock state changes."""
+        if is_locked:
+            self.status_bar.showMessage('GCP selection is locked - points disabled')
+        else:
+            self.status_bar.showMessage('GCP selection is unlocked - points enabled')
 
     def on_gcp_added(self, gcp):
         """Handle GCP addition."""
@@ -556,12 +608,12 @@ class MainWindow(QMainWindow):
             self.test_viewer.load_image(first_image)
             self.status_bar.showMessage(f'Loaded: {Path(first_image).name}')
 
-            # If image lacks spatial info, use collection location as seed
-            if needs_seed and seed_location:
+            # Always center reference viewer on collection location
+            seed_location = self.collection_manager.get_collection_seed_location()
+            if seed_location:
                 lat, lon = seed_location
-                # Update reference viewer to center on collection location
-                self.reference_viewer.set_center(lat, lon)
-                self.status_bar.showMessage(f'Using collection seed: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}')
+                self.reference_viewer.recreate_map_with_center(lat, lon)
+                self.status_bar.showMessage(f'Centered on collection: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}')
 
             # Update navigation counter
             self._update_nav_counter()

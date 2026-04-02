@@ -2,16 +2,21 @@
 Test Image Viewer - Left panel for displaying and selecting points in test imagery
 """
 
+#  Python Standard Libraries
 import json
+from pathlib import Path
 
+#  Third-Party Libraries
 import numpy as np
 import rasterio
-from pathlib import Path
+import cv2
+from PIL import Image
 from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QPushButton, QScrollArea, QFrame)
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QImage, QPixmap, QPainter, QPen, QColor, QFont, QMouseEvent
 
+#  Project Libraries
 from app.widgets.image_canvas import Image_Canvas
 
 class Test_Image_Viewer(QWidget):
@@ -31,6 +36,17 @@ class Test_Image_Viewer(QWidget):
         self.gcp_points = {}  # gcp_id -> (x, y)
         self.rpc_data = None
         self.is_orthorectified = False
+
+        # Image adjustment parameters
+        self.auto_stretch = False
+        self.min_pixel = 0
+        self.max_pixel = 255
+        self.brightness = 0.0  # -1.0 to 1.0
+        self.contrast = 1.0    # 0.0 to 2.0
+
+        # Image metadata
+        self.bit_depth = 8
+        self.dtype = np.uint8
 
         self.setup_ui()
 
@@ -92,9 +108,6 @@ class Test_Image_Viewer(QWidget):
     def load_image(self, image_path):
         """Load an image file."""
         try:
-            import cv2
-            from PIL import Image
-
             self.image_path = image_path
 
             # Load image using OpenCV for better format support
@@ -110,7 +123,7 @@ class Test_Image_Viewer(QWidget):
                     self.original_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
 
             self.current_image = self.original_image.copy()
-            self.update_display()
+            self.apply_image_adjustments()  # Apply current settings to new image
 
             # Extract RPC data if available
             self.extract_rpc_data(image_path)
@@ -128,9 +141,13 @@ class Test_Image_Viewer(QWidget):
             raise
 
     def load_geotiff(self, image_path):
-        """Load GeoTIFF using rasterio to preserve georeferencing."""
+        """Load GeoTIFF using rasterio to preserve georeferencing and bit depth."""
         try:
             with rasterio.open(image_path) as src:
+                # Preserve original data type and bit depth
+                self.dtype = src.dtypes[0]
+                self.bit_depth = src.dtypes[0].itemsize * 8
+
                 # Read all bands
                 image_data = src.read()
 
@@ -152,12 +169,17 @@ class Test_Image_Viewer(QWidget):
                     # Single band - convert to 3-channel
                     self.original_image = cv2.cvtColor(image_data, cv2.COLOR_GRAY2BGR)
 
+                # Update pixel range based on bit depth
+                self.max_pixel = (2 ** self.bit_depth) - 1
+
         except Exception:
             # Fallback to regular image loading
-            import cv2
             self.original_image = cv2.imread(image_path)
             if self.original_image is None:
                 raise ValueError(f"Could not load image: {image_path}")
+            self.dtype = np.uint8
+            self.bit_depth = 8
+            self.max_pixel = 255
 
     def extract_rpc_data(self, image_path):
         """Extract RPC data from GeoTIFF if available."""
@@ -181,14 +203,24 @@ class Test_Image_Viewer(QWidget):
         if self.current_image is None:
             return
 
+        # Convert to display format (8-bit for Qt)
+        display_image = self.current_image
+
+        # Normalize to 8-bit for display if needed
+        if self.bit_depth > 8:
+            # Convert to 8-bit for display while preserving visual information
+            display_image = ((display_image.astype(np.float32) / self.max_pixel) * 255).astype(np.uint8)
+        else:
+            display_image = display_image.astype(np.uint8)
+
         # Convert to QPixmap
-        height, width = self.current_image.shape[:2]
+        height, width = display_image.shape[:2]
         bytes_per_line = 3 * width
 
-        if len(self.current_image.shape) == 3:
-            q_image = self.current_image
+        if len(display_image.shape) == 3:
+            q_image = display_image
         else:
-            q_image = cv2.cvtColor(self.current_image, cv2.COLOR_GRAY2RGB)
+            q_image = cv2.cvtColor(display_image, cv2.COLOR_GRAY2RGB)
 
         qt_image = QImage(
             q_image.data, width, height, bytes_per_line, QImage.Format_RGB888
@@ -287,3 +319,81 @@ class Test_Image_Viewer(QWidget):
     def get_rpc_data(self):
         """Get RPC data if available."""
         return self.rpc_data
+
+    def set_auto_stretch(self, enabled: bool):
+        """Set auto-stretch mode."""
+        self.auto_stretch = enabled
+        self.apply_image_adjustments()
+
+    def set_min_pixel(self, value: int):
+        """Set minimum pixel value."""
+        self.min_pixel = value
+        self.apply_image_adjustments()
+
+    def set_max_pixel(self, value: int):
+        """Set maximum pixel value."""
+        self.max_pixel = value
+        self.apply_image_adjustments()
+
+    def set_brightness(self, value: float):
+        """Set brightness value (-1.0 to 1.0)."""
+        self.brightness = value
+        self.apply_image_adjustments()
+
+    def set_contrast(self, value: float):
+        """Set contrast value (0.0 to 2.0)."""
+        self.contrast = value
+        self.apply_image_adjustments()
+
+    def reset_view_settings(self):
+        """Reset all view settings to defaults."""
+        self.auto_stretch = False
+        self.min_pixel = 0
+        self.max_pixel = 255
+        self.brightness = 0.0
+        self.contrast = 1.0
+        self.apply_image_adjustments()
+
+    def apply_image_adjustments(self):
+        """Apply current image adjustments to the original image."""
+        if self.original_image is None:
+            return
+
+        # Start with original image
+        adjusted = self.original_image.astype(np.float32)
+
+        # Apply auto-stretch if enabled
+        if self.auto_stretch:
+            # Calculate actual min/max from image
+            actual_min = np.percentile(adjusted, 2)
+            actual_max = np.percentile(adjusted, 98)
+
+            # Stretch to full range
+            if actual_max > actual_min:
+                adjusted = (adjusted - actual_min) / (actual_max - actual_min)
+                adjusted = np.clip(adjusted * self.max_pixel, 0, self.max_pixel)
+        else:
+            # Apply manual min/max range
+            if self.max_pixel > self.min_pixel:
+                adjusted = np.clip(adjusted, self.min_pixel, self.max_pixel)
+                adjusted = ((adjusted - self.min_pixel) / (self.max_pixel - self.min_pixel)) * self.max_pixel
+
+        # Apply contrast
+        if self.contrast != 1.0:
+            center = self.max_pixel / 2.0
+            adjusted = (adjusted - center) * self.contrast + center
+
+        # Apply brightness
+        if self.brightness != 0.0:
+            adjusted = adjusted + (self.brightness * self.max_pixel)
+
+        # Clip to valid range and convert back to original dtype
+        adjusted = np.clip(adjusted, 0, self.max_pixel).astype(self.dtype)
+
+        # Update current image
+        self.current_image = adjusted
+        self.update_display()
+
+    def get_image_data(self):
+        """Get the current image data for histogram."""
+        return self.current_image

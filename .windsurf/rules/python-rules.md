@@ -35,9 +35,10 @@ The project follows Rust-style naming conventions adapted for Python:
 - **Examples**: `coordinate.py`, `terrain.py`, `gcp_processor.py`
 - **Rationale**: Standard Python convention
 
-#  Module Rules
+# Module Rules
 
-- Try to import modules in this sort of sequence:
+- **ALL imports must be at the top of the file** - No inline imports inside functions or methods
+- Import modules in this sequence:
 
 ```python
 # Standard library imports
@@ -52,6 +53,9 @@ from qtpy.QtWidgets import QApplication, QMainWindow
 from app.core.coordinate import Geographic, Pixel, UTM
 from app.core.terrain import elevation
 ```
+
+- **No exceptions**: Even if an import is only used in one method, it must be at the top of the file
+- **Rationale**: Improves readability, makes dependencies clear, and follows Python best practices
 
 #  Typing Hints
 
