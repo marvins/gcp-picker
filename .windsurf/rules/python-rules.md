@@ -41,15 +41,15 @@ The project follows Rust-style naming conventions adapted for Python:
 - Import modules in this sequence:
 
 ```python
-# Standard library imports
+# Python Standard Libraries
 import os
 import sys
 
-# Third-party imports
+# Third-party Libraries
 import numpy as np
 from qtpy.QtWidgets import QApplication, QMainWindow
 
-# Project imports
+# Project Libraries
 from app.core.coordinate import Geographic, Pixel, UTM
 from app.core.terrain import elevation
 ```

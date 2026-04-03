@@ -35,28 +35,54 @@ import rasterio
 import requests
 
 # Project Libraries
-from pointy.core.coordinate import Transformer, Geographic, Coordinate
+from pointy.core.coordinate import Transformer, Geographic, Coordinate, UTM, UPS, Web_Mercator, ECEF
 
 
 @dataclass
 class Elevation_Point:
-    """Elevation data point."""
-    coord: Coordinate
+    """Elevation data point with coordinate and metadata."""
+    coord: Geographic
     source: str
     accuracy: float | None = None
 
-    def coordinate(self) -> Coordinate:
-        """Get the coordinate object."""
+    def __post_init__(self):
+        """Validate coordinate type."""
+        if not isinstance(self.coord, Geographic):
+            raise TypeError(f"Elevation_Point coord must be Geographic, got {type(self.coord)}")
+
+    def coordinate(self) -> Geographic:
+        """Get the geographic coordinate object."""
         return self.coord
 
     def geographic(self) -> Geographic:
-        """Get coordinate as Geographic type (auto-converts if needed)."""
-        if isinstance(self.coord, Geographic):
-            return self.coord
+        """Get coordinate as Geographic type (already is Geographic)."""
+        return self.coord
 
-        # Use transformer to convert to Geographic
+    def to_utm(self) -> UTM:
+        """Convert to UTM coordinate."""
         transformer = Transformer()
-        return transformer.to_geographic(self.coord)
+        return transformer.geo_to_utm(self.coord)
+
+    def to_ups(self) -> UPS:
+        """Convert to UPS coordinate."""
+        transformer = Transformer()
+        return transformer.geo_to_ups(self.coord)
+
+    def to_web_mercator(self) -> Web_Mercator:
+        """Convert to Web Mercator coordinate."""
+        transformer = Transformer()
+        return transformer.geo_to_web_mercator(self.coord)
+
+    def to_ecef(self) -> ECEF:
+        """Convert to ECEF coordinate."""
+        transformer = Transformer()
+        return transformer.geo_to_ecef(self.coord)
+
+    @classmethod
+    def create(cls, latitude: float, longitude: float, elevation: float, source: str, accuracy: float | None = None) -> 'Elevation_Point':
+        """Create elevation point from individual components."""
+        coord = Geographic(latitude, longitude, elevation)
+        return cls(coord, source, accuracy)
 
     def __str__(self) -> str:
         """String representation."""
@@ -69,13 +95,13 @@ class Elevation_Source:
     def __init__(self, name: str):
         self.name = name
 
-    def get_elevation(self, lat: float, lon: float) -> float | None:
-        """Get elevation for a single point."""
+    def get_elevation(self, coord: Geographic) -> float | None:
+        """Get elevation for a geographic coordinate."""
         raise NotImplementedError
 
-    def get_elevations(self, points: list[tuple[float, float]]) -> list[float | None]:
+    def get_elevations(self, coords: list[Geographic]) -> list[float | None]:
         """Get elevations for multiple points."""
-        return [self.get_elevation(lat, lon) for lat, lon in points]
+        return [self.get_elevation(coord) for coord in coords]
 
 
 class SRTM_Elevation_Source(Elevation_Source):
@@ -87,8 +113,10 @@ class SRTM_Elevation_Source(Elevation_Source):
         self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "srtm_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_elevation(self, lat: float, lon: float) -> float | None:
+    def get_elevation(self, coord: Geographic) -> float | None:
         """Get elevation from SRTM using Earth Engine API."""
+        lat, lon = coord.latitude_deg, coord.longitude_deg
+
         try:
             # Check cache first
             cache_file = self._get_cache_file(lat, lon)
@@ -176,8 +204,10 @@ class AWS_Elevation_Source(Elevation_Source):
         self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "aws_cache"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_elevation(self, lat: float, lon: float) -> float | None:
+    def get_elevation(self, coord: Geographic) -> float | None:
         """Get elevation from AWS Terrain Tiles."""
+        lat, lon = coord.latitude_deg, coord.longitude_deg
+
         try:
             # Calculate tile coordinates
             zoom = 12  # Use zoom level 12 for ~30m resolution
@@ -320,6 +350,27 @@ class Manager:
         # Coordinate transformer
         self.coord_transformer = Transformer()
 
+    @classmethod
+    def create_default(cls, cache_enabled: bool = True) -> 'Manager':
+        """Create a default terrain manager with SRTM and AWS sources."""
+        sources = [
+            SRTM_Elevation_Source(),
+            AWS_Elevation_Source()
+        ]
+        return cls(sources, cache_enabled)
+
+    @classmethod
+    def create_srtm_only(cls, cache_enabled: bool = True) -> 'Manager':
+        """Create a terrain manager with only SRTM source."""
+        sources = [SRTM_Elevation_Source()]
+        return cls(sources, cache_enabled)
+
+    @classmethod
+    def create_aws_only(cls, cache_enabled: bool = True) -> 'Manager':
+        """Create a terrain manager with only AWS source."""
+        sources = [AWS_Elevation_Source()]
+        return cls(sources, cache_enabled)
+
     def add_local_dem(self, dem_file: str | Path):
         """Add a local DEM file as an elevation source."""
         try:
@@ -328,23 +379,23 @@ class Manager:
         except Exception as e:
             logging.warning(f"Could not add local DEM {dem_file}: {e}")
 
-    def elevation(self, latitude: float, longitude: float) -> float | None:
+    def elevation(self, coord: Geographic) -> float | None:
         """Get elevation for a geographic coordinate."""
         # Check cache first
-        cache_key = f"{latitude:.6f},{longitude:.6f}"
+        cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
 
         if self.cache_enabled and cache_key in self.elevation_cache:
-            return self.elevation_cache[cache_key].elevation
+            return self.elevation_cache[cache_key].coord.altitude_m
 
         # Try each source in order
         for source in self.sources:
             try:
-                elevation = source.get_elevation(latitude, longitude)
+                elevation = source.get_elevation(coord)
                 if elevation is not None:
                     # Cache the result
                     if self.cache_enabled:
                         point = Elevation_Point(
-                            coord=Geographic(latitude, longitude, elevation),
+                            coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
                             source=source.name
                         )
                         self.elevation_cache[cache_key] = point
@@ -358,34 +409,66 @@ class Manager:
 
         return None
 
-    def elevation_batch(self, points: list[tuple[float, float]]) -> list[float | None]:
+    def elevation_point(self, coord: Geographic) -> Elevation_Point | None:
+        """Get elevation point with full metadata."""
+        # Check cache first
+        cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
+
+        if self.cache_enabled and cache_key in self.elevation_cache:
+            return self.elevation_cache[cache_key]
+
+        # Try each source in order
+        for source in self.sources:
+            try:
+                elevation = source.get_elevation(coord)
+                if elevation is not None:
+                    # Create elevation point
+                    point = Elevation_Point(
+                        coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
+                        source=source.name
+                    )
+
+                    # Cache the result
+                    if self.cache_enabled:
+                        self.elevation_cache[cache_key] = point
+                        self._save_cache()
+
+                    return point
+
+            except Exception as e:
+                logging.warning(f"Elevation source {source.name} failed: {e}")
+                continue
+
+        return None
+
+    def elevation_batch(self, coords: list[Geographic]) -> list[float | None]:
         """Get elevations for multiple points (batch processing)."""
         # Check cache first
         cached_results = []
-        uncached_points = []
+        uncached_coords = []
         uncached_indices = []
 
-        for i, (lat, lon) in enumerate(points):
-            cache_key = f"{lat:.6f},{lon:.6f}"
+        for i, coord in enumerate(coords):
+            cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
 
             if self.cache_enabled and cache_key in self.elevation_cache:
-                cached_results.append(self.elevation_cache[cache_key].elevation)
+                cached_results.append(self.elevation_cache[cache_key].coord.altitude_m)
             else:
                 cached_results.append(None)
-                uncached_points.append((lat, lon))
+                uncached_coords.append(coord)
                 uncached_indices.append(i)
 
         # Process uncached points in parallel
-        if uncached_points:
+        if uncached_coords:
             with ThreadPoolExecutor(max_workers=4) as executor:
                 future_to_index = {}
 
                 for source in self.sources:
-                    if not uncached_points:
+                    if not uncached_coords:
                         break
 
                     # Submit batch request to this source
-                    future = executor.submit(source.get_elevations, uncached_points)
+                    future = executor.submit(source.get_elevations, uncached_coords)
                     future_to_index[future] = source
 
                 # Process results as they complete
@@ -399,14 +482,14 @@ class Manager:
                         for i, elevation in enumerate(results):
                             if elevation is not None:
                                 idx = uncached_indices[i]
-                                lat, lon = uncached_points[i]
+                                coord = uncached_coords[i]
                                 cached_results[idx] = elevation
 
                                 # Cache the result
                                 if self.cache_enabled:
-                                    cache_key = f"{lat:.6f},{lon:.6f}"
+                                    cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
                                     point = Elevation_Point(
-                                        coord=Geographic(lat, lon, elevation),
+                                        coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
                                         source=source.name
                                     )
                                     self.elevation_cache[cache_key] = point
@@ -453,8 +536,16 @@ class Manager:
         try:
             with open(self.cache_file, 'rb') as f:
                 self.elevation_cache = pickle.load(f)
-        except (pickle.PickleError, IOError, EOFError):
+        except Exception as e:
+            # Handle any pickle errors including class name changes
+            logging.warning(f"Could not load cache due to: {e}. Starting with empty cache.")
             self.elevation_cache = {}
+            # Remove the problematic cache file
+            try:
+                self.cache_file.unlink()
+                logging.info("Removed problematic cache file")
+            except:
+                pass
 
     def _save_cache(self):
         """Save elevation cache to file."""
@@ -492,6 +583,26 @@ def create_aws_manager(cache_enabled: bool = True) -> Manager:
     return Manager.create_aws_only(cache_enabled)
 
 
-def elevation(latitude: float, longitude: float) -> float | None:
-    """Convenience function to get elevation."""
-    return get_terrain_manager().elevation(latitude, longitude)
+def elevation(coord: Geographic) -> float | None:
+    """Convenience function to get elevation.
+
+    Args:
+        coord: Geographic coordinate
+
+    Returns:
+        Elevation in meters or None if not found
+    """
+    manager = get_terrain_manager()
+    return manager.elevation(coord)
+
+def elevation_point(coord: Geographic) -> Elevation_Point | None:
+    """Convenience function to get elevation point with metadata.
+
+    Args:
+        coord: Geographic coordinate
+
+    Returns:
+        Elevation point with metadata or None if not found
+    """
+    manager = get_terrain_manager()
+    return manager.elevation_point(coord)
