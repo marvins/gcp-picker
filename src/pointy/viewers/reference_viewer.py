@@ -1,20 +1,38 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    reference_viewer.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Reference Viewer - Right panel for displaying map-projected reference sources
 """
 
+#  Python Standard Libraries
 import os
-import numpy as np
 from pathlib import Path
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QComboBox, QLineEdit, QScrollArea,
-                           QTabWidget, QFormLayout, QSpinBox, QDoubleSpinBox)
-from qtpy.QtCore import Qt, Signal, QTimer
-from qtpy.QtGui import QPixmap, QFont
 
+#  Third-Party Libraries
+import numpy as np
+from qtpy.QtCore import Qt, Signal, QTimer
+from qtpy.QtGui import QFont, QPixmap
+from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+                           QLabel, QLineEdit, QPushButton, QScrollArea, QSpinBox,
+                           QTabWidget, QVBoxLayout, QWidget)
+
+#  Project Libraries
+from pointy.core.gdal_reader import GDALReader
+from pointy.core.wms_client import WMSClient
 from pointy.widgets.image_canvas import Image_Canvas
 from pointy.widgets.zoom_controls import Zoom_Controls
-from pointy.core.wms_client import WMSClient
-from pointy.core.gdal_reader import GDALReader
 
 class Reference_Viewer(QWidget):
     """Viewer for reference sources (WMS/WMTS/GDAL virtual rasters)."""

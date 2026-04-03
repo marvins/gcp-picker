@@ -1,12 +1,28 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gcp.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Ground Control Point (GCP) data structure
 """
 
+#  Python Standard Libraries
 from dataclasses import dataclass
-from typing import Optional
 
+#  Third-Party Libraries
 from rasterio.control import GroundControlPoint
 
+#  Project Libraries
 from pointy.core.coordinate import Geographic, Pixel, UTM
 from pointy.core.terrain import elevation
 
@@ -18,8 +34,8 @@ class GCP:
     test_pixel: Pixel
     reference_pixel: Pixel
     geographic: Geographic
-    projected: Optional[UTM] = None
-    error: Optional[float] = None
+    projected: UTM | None = None
+    error: float | None = None
     enabled: bool = True
 
     def __post_init__(self):

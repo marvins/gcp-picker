@@ -77,17 +77,17 @@ class Metadata_Panel(QWidget):
         self.test_pixel_label.setStyleSheet("font-family: monospace; font-size: 10px;")
         test_layout.addWidget(self.test_pixel_label, 1, 1)
 
-        # Combine ortho lat/lon on same row
-        ortho_latlon_label = QLabel("Ortho Lat, Lon:")
-        ortho_latlon_label.setStyleSheet("font-size: 10px; color: #666;")
-        test_layout.addWidget(ortho_latlon_label, 2, 0)
+        # Combine rectified lat/lon on same row
+        rectified_latlon_label = QLabel("Rectified Lat, Lon:")
+        rectified_latlon_label.setStyleSheet("font-size: 10px; color: #666;")
+        test_layout.addWidget(rectified_latlon_label, 2, 0)
         self.test_latlon_label = QLabel("--, --")
         self.test_latlon_label.setStyleSheet("font-family: monospace; font-size: 10px; color: #666;")
         test_layout.addWidget(self.test_latlon_label, 2, 1)
 
-        ortho_alt_label = QLabel("Ortho Alt:")
-        ortho_alt_label.setStyleSheet("font-size: 10px; color: #666;")
-        test_layout.addWidget(ortho_alt_label, 3, 0)
+        rectified_alt_label = QLabel("Rectified Alt:")
+        rectified_alt_label.setStyleSheet("font-size: 10px; color: #666;")
+        test_layout.addWidget(rectified_alt_label, 3, 0)
         self.test_alt_label = QLabel("--")
         self.test_alt_label.setStyleSheet("font-family: monospace; font-size: 10px; color: #666;")
         test_layout.addWidget(self.test_alt_label, 3, 1)
@@ -153,9 +153,9 @@ class Metadata_Panel(QWidget):
             x: Pixel X coordinate
             y: Pixel Y coordinate
             pixel_value: String representation of pixel value(s)
-            lat: Orthorectified latitude (optional)
-            lon: Orthorectified longitude (optional)
-            alt: Orthorectified altitude (optional)
+            lat: Rectified latitude (optional)
+            lon: Rectified longitude (optional)
+            alt: Rectified altitude (optional)
         """
         # Update combined X,Y label
         if x is not None and y is not None:
@@ -172,7 +172,7 @@ class Metadata_Panel(QWidget):
         else:
             self.test_pixel_label.setText("--")
 
-        # Update combined ortho lat/lon label
+        # Update combined rectified lat/lon label
         if lat is not None and lon is not None:
             self.test_latlon_label.setText(f"{lat:.6f}, {lon:.6f}")
             self.test_latlon_label.setStyleSheet("font-family: monospace; font-size: 10px; color: #000;")

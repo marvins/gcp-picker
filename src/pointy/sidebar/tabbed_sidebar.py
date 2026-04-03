@@ -10,7 +10,7 @@
 #
 #    File:    tabbed_sidebar.py
 #    Author:  Marvin Smith
-#    Date:    4/1/2026
+#    Date:    4/3/2026
 #
 """
 Tabbed Sidebar - Sidebar with tabs for better organization
@@ -20,12 +20,13 @@ Tabbed Sidebar - Sidebar with tabs for better organization
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 #  Project Libraries
-from .components.gcp_panel import GCP_Panel
-from .components.status_panel import Status_Panel
-from .components.tools_panel import Tools_Panel
-from .components.collection_nav_panel import Collection_Nav_Panel
-from .components.view_control_panel import Image_View_Control_Panel
-from .components.metadata_panel import Metadata_Panel
+from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
+from pointy.sidebar.components.gcp_panel import GCP_Panel
+from pointy.sidebar.components.metadata_panel import Metadata_Panel
+from pointy.sidebar.components.status_panel import Status_Panel
+from pointy.sidebar.components.tools_panel import Tools_Panel
+from pointy.sidebar.components.transformation_status_panel import Transformation_Status_Panel
+from pointy.sidebar.components.view_control_panel import Image_View_Control_Panel
 
 
 class Tabbed_Sidebar(QWidget):
@@ -46,8 +47,22 @@ class Tabbed_Sidebar(QWidget):
         self.tab_widget.setTabPosition(QTabWidget.North)
 
         # Create tabs
+        self._setup_info_tab()
+        self._setup_image_controls_tab()
+        self._setup_gcp_tab()
+        self._setup_ortho_tab()
 
-        # Info Tab (first and default)
+        # Set Info tab as default
+        self.tab_widget.setCurrentIndex(0)
+
+        # Add tab widget to layout
+        layout.addWidget(self.tab_widget)
+
+        # Set sidebar styling
+        self._set_styling()
+
+    def _setup_info_tab(self):
+        """Setup the Info tab with status, navigation, and metadata."""
         info_widget = QWidget()
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(5, 5, 5, 5)
@@ -56,14 +71,17 @@ class Tabbed_Sidebar(QWidget):
         self.status_panel = Status_Panel()
         info_layout.addWidget(self.status_panel)
 
+        self.collection_nav_panel = Collection_Nav_Panel()
+        info_layout.addWidget(self.collection_nav_panel)
+
         self.metadata_panel = Metadata_Panel()
         info_layout.addWidget(self.metadata_panel)
 
         info_layout.addStretch()
-
         self.tab_widget.addTab(info_widget, "Info")
 
-        # Image Controls Tab
+    def _setup_image_controls_tab(self):
+        """Setup the Image Controls tab."""
         image_controls_widget = QWidget()
         image_controls_layout = QVBoxLayout(image_controls_widget)
         image_controls_layout.setContentsMargins(5, 5, 5, 5)
@@ -75,7 +93,8 @@ class Tabbed_Sidebar(QWidget):
 
         self.tab_widget.addTab(image_controls_widget, "Image")
 
-        # GCP Tab
+    def _setup_gcp_tab(self):
+        """Setup the GCPs tab."""
         gcp_widget = QWidget()
         gcp_layout = QVBoxLayout(gcp_widget)
         gcp_layout.setContentsMargins(5, 5, 5, 5)
@@ -87,29 +106,24 @@ class Tabbed_Sidebar(QWidget):
 
         self.tab_widget.addTab(gcp_widget, "GCPs")
 
-        # Navigation Tab
+    def _setup_ortho_tab(self):
+        """Setup the Ortho tab with transformation status and tools."""
         nav_widget = QWidget()
         nav_layout = QVBoxLayout(nav_widget)
         nav_layout.setContentsMargins(5, 5, 5, 5)
         nav_layout.setSpacing(10)
 
-        self.collection_nav_panel = Collection_Nav_Panel()
-        nav_layout.addWidget(self.collection_nav_panel)
+        self.transformation_status_panel = Transformation_Status_Panel()
+        nav_layout.addWidget(self.transformation_status_panel)
 
         self.tools_panel = Tools_Panel()
         nav_layout.addWidget(self.tools_panel)
 
         nav_layout.addStretch()
+        self.tab_widget.addTab(nav_widget, "Ortho")
 
-        self.tab_widget.addTab(nav_widget, "Navigation")
-
-        # Set Info tab as default
-        self.tab_widget.setCurrentIndex(0)
-
-        # Add tab widget to layout
-        layout.addWidget(self.tab_widget)
-
-        # Set sidebar styling
+    def _set_styling(self):
+        """Set the sidebar styling."""
         self.setStyleSheet("""
             QWidget {
                 background-color: #f5f5f5;
@@ -161,3 +175,7 @@ class Tabbed_Sidebar(QWidget):
     def get_metadata_panel(self) -> Metadata_Panel:
         """Get the metadata panel component."""
         return self.metadata_panel
+
+    def get_transformation_status_panel(self) -> Transformation_Status_Panel:
+        """Get the transformation status panel component."""
+        return self.transformation_status_panel

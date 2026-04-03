@@ -1,14 +1,32 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    collection_manager.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Collection Manager - Manage collection state and operations
 """
 
+#  Python Standard Libraries
 import logging
 import tomllib
-from pathlib import Path
 from dataclasses import dataclass, field
-from typing import List, Optional
+from pathlib import Path
+from typing import List
+
+#  Third-Party Libraries
 from qtpy.QtCore import QObject, Signal
 
+#  Project Libraries
 from pointy.core.coordinate import Geographic
 
 
@@ -39,7 +57,7 @@ class Collection_Manager(QObject):
 
     def __init__(self):
         super().__init__()
-        self.current_collection: Optional[Collection_Info] = None
+        self.current_collection: Collection_Info | None = None
         self.current_image_index: int = 0
         self.loaded_images: List[str] = []
 
@@ -114,7 +132,7 @@ class Collection_Manager(QObject):
             logger.error(f"Error loading collection: {e}")
             return False
 
-    def get_first_image(self) -> Optional[str]:
+    def get_first_image(self) -> str | None:
         """Get the first image path from the collection.
 
         Returns:
@@ -124,7 +142,7 @@ class Collection_Manager(QObject):
             return self.current_collection.image_paths[0]
         return None
 
-    def get_next_image(self) -> Optional[str]:
+    def get_next_image(self) -> str | None:
         """Get the next image in the collection.
 
         Returns:
@@ -138,7 +156,7 @@ class Collection_Manager(QObject):
             return self.current_collection.image_paths[self.current_image_index]
         return None
 
-    def get_previous_image(self) -> Optional[str]:
+    def get_previous_image(self) -> str | None:
         """Get the previous image in the collection.
 
         Returns:
@@ -167,7 +185,7 @@ class Collection_Manager(QObject):
         """Check if a collection is currently loaded."""
         return self.current_collection is not None
 
-    def get_current_image(self) -> Optional[str]:
+    def get_current_image(self) -> str | None:
         """Get the currently selected image path."""
         if self.current_collection and self.loaded_images:
             if 0 <= self.current_image_index < len(self.loaded_images):

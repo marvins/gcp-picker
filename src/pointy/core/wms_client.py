@@ -1,21 +1,38 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    wms_client.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 WMS Client - Fetch data from Web Map Services
 """
 
-import requests
+#  Python Standard Libraries
 import xml.etree.ElementTree as ET
-from typing import List, Tuple, Optional, Dict
+from typing import Dict, List, Tuple
+
+#  Third-Party Libraries
 import numpy as np
+import requests
 
 class WMSClient:
     """Client for interacting with WMS/WMTS services."""
-    
+
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'GCP-Picker/1.0'
         })
-        
+
     def get_layers(self, service_url: str) -> List[str]:
         """Get available layers from WMS service."""
         try:
@@ -25,43 +42,43 @@ class WMSClient:
                 'VERSION': '1.3.0',
                 'REQUEST': 'GetCapabilities'
             }
-            
+
             response = self.session.get(service_url, params=params, timeout=30)
             response.raise_for_status()
-            
+
             # Parse XML response
             root = ET.fromstring(response.content)
-            
+
             # Extract layer names
             layers = []
-            
+
             # Handle different XML namespaces
             namespaces = {
                 'wms': 'http://www.opengis.net/wms',
                 'ows': 'http://www.opengis.net/ows'
             }
-            
+
             # Try to find layers
             for layer_elem in root.findall('.//Layer', namespaces):
                 name_elem = layer_elem.find('Name')
                 if name_elem is not None and name_elem.text:
                     layers.append(name_elem.text)
-                    
+
             # Fallback without namespace
             if not layers:
                 for layer_elem in root.findall('.//Layer'):
                     name_elem = layer_elem.find('Name')
                     if name_elem is not None and name_elem.text:
                         layers.append(name_elem.text)
-                        
+
             return layers
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to get WMS layers: {str(e)}")
-            
-    def get_map(self, service_url: str, layer: str, crs: str, 
+
+    def get_map(self, service_url: str, layer: str, crs: str,
                 bbox: List[float], width: int, height: int,
-                format: str = 'image/png') -> Tuple[Optional[np.ndarray], Optional[List[float]]]:
+                format: str = 'image/png') -> Tuple[np.ndarray | None, List[float] | None]:
         """Get a map from WMS service."""
         try:
             # Build GetMap request
@@ -77,33 +94,33 @@ class WMSClient:
                 'FORMAT': format,
                 'TRANSPARENT': 'TRUE'
             }
-            
+
             response = self.session.get(service_url, params=params, timeout=60)
             response.raise_for_status()
-            
+
             # Convert response to numpy array
             image_data = self._response_to_array(response.content, format)
-            
+
             # Calculate pixel-to-map transformation
             transform = self._calculate_transform(bbox, width, height)
-            
+
             return image_data, transform
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to get WMS map: {str(e)}")
-            
+
     def _response_to_array(self, content: bytes, format: str) -> np.ndarray:
         """Convert HTTP response to numpy array."""
         try:
             from PIL import Image
             import io
-            
+
             # Create PIL image from bytes
             image = Image.open(io.BytesIO(content))
-            
+
             # Convert to numpy array
             image_array = np.array(image)
-            
+
             # Handle different formats
             if format == 'image/png' and image.mode == 'RGBA':
                 # Keep alpha channel
@@ -117,18 +134,18 @@ class WMSClient:
                 # Convert to RGB
                 rgb_image = image.convert('RGB')
                 return np.array(rgb_image)
-                
+
         except Exception as e:
             raise RuntimeError(f"Failed to convert image data: {str(e)}")
-            
+
     def _calculate_transform(self, bbox: List[float], width: int, height: int) -> List[float]:
         """Calculate pixel-to-map transformation matrix."""
         min_x, min_y, max_x, max_y = bbox
-        
+
         # Calculate pixel sizes
         pixel_width = (max_x - min_x) / width
         pixel_height = (max_y - min_y) / height
-        
+
         # GDAL-style transformation matrix
         # [origin_x, pixel_width, rotation_x, origin_y, rotation_y, -pixel_height]
         transform = [
@@ -139,9 +156,9 @@ class WMSClient:
             0.0,             # Rotation Y
             -pixel_height    # Pixel height (negative for Y-down)
         ]
-        
+
         return transform
-        
+
     def get_feature_info(self, service_url: str, layer: str, crs: str,
                         bbox: List[float], width: int, height: int,
                         x: int, y: int, query_layers: str = None) -> Dict:
@@ -161,21 +178,21 @@ class WMSClient:
                 'I': x,
                 'J': y
             }
-            
+
             response = self.session.get(service_url, params=params, timeout=30)
             response.raise_for_status()
-            
+
             # Try to parse as JSON
             try:
                 return response.json()
             except:
                 # Return as text if not JSON
                 return {'text': response.text}
-                
+
         except Exception as e:
             raise RuntimeError(f"Failed to get feature info: {str(e)}")
-            
-    def get_legend_graphic(self, service_url: str, layer: str, 
+
+    def get_legend_graphic(self, service_url: str, layer: str,
                           format: str = 'image/png') -> bytes:
         """Get legend graphic for a layer."""
         try:
@@ -186,11 +203,11 @@ class WMSClient:
                 'LAYER': layer,
                 'FORMAT': format
             }
-            
+
             response = self.session.get(service_url, params=params, timeout=30)
             response.raise_for_status()
-            
+
             return response.content
-            
+
         except Exception as e:
             raise RuntimeError(f"Failed to get legend graphic: {str(e)}")

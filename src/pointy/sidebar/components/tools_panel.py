@@ -29,24 +29,6 @@ class Tools_Panel(QWidget):
         title_label.setFont(QFont("Arial", 10, QFont.Bold))
         layout.addWidget(title_label)
 
-        # GCP Tools Group
-        gcp_group = QGroupBox("GCP Tools")
-        gcp_layout = QVBoxLayout(gcp_group)
-
-        self.create_gcp_btn = QPushButton("Create GCP")
-        self.create_gcp_btn.clicked.connect(lambda: self.tool_selected.emit("create_gcp"))
-        gcp_layout.addWidget(self.create_gcp_btn)
-
-        self.clear_gcps_btn = QPushButton("Clear All GCPs")
-        self.clear_gcps_btn.clicked.connect(lambda: self.tool_selected.emit("clear_gcps"))
-        gcp_layout.addWidget(self.clear_gcps_btn)
-
-        self.export_gcps_btn = QPushButton("Export GCPs")
-        self.export_gcps_btn.clicked.connect(lambda: self.tool_selected.emit("export_gcps"))
-        gcp_layout.addWidget(self.export_gcps_btn)
-
-        layout.addWidget(gcp_group)
-
         # Processing Settings Group
         processing_group = QGroupBox("Processing Settings")
         processing_layout = QVBoxLayout(processing_group)
@@ -84,9 +66,9 @@ class Tools_Panel(QWidget):
         advanced_group = QGroupBox("Advanced Tools")
         advanced_layout = QVBoxLayout(advanced_group)
 
-        self.orthorectify_btn = QPushButton("Orthorectify Image")
-        self.orthorectify_btn.clicked.connect(lambda: self.tool_selected.emit("orthorectify"))
-        advanced_layout.addWidget(self.orthorectify_btn)
+        self.rectify_btn = QPushButton("Rectify Image")
+        self.rectify_btn.clicked.connect(lambda: self.tool_selected.emit("rectify"))
+        advanced_layout.addWidget(self.rectify_btn)
 
         self.validate_gcps_btn = QPushButton("Validate GCPs")
         self.validate_gcps_btn.clicked.connect(lambda: self.tool_selected.emit("validate_gcps"))

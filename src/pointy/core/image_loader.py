@@ -1,3 +1,17 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    image_loader.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Image Loading Strategy Pattern
 
@@ -5,20 +19,23 @@ Provides a unified interface for loading images from various sources
 with automatic format detection and fallback handling.
 """
 
+#  Python Standard Libraries
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+#  Third-Party Libraries
 import numpy as np
 import rasterio
 
+#  Project Libraries
 from pointy.core.constants import SUPPORTED_IMAGE_EXTENSIONS
 
 
 @dataclass
-class LoadedImage:
+class Loaded_Image:
     """Standardized result from image loading strategies."""
 
     data: np.ndarray  # Image data as numpy array (H, W, C) or (H, W)
@@ -38,7 +55,7 @@ class LoadedImage:
     rpc_data: dict | None = None
 
 
-class LoadStrategy(ABC):
+class Load_Strategy(ABC):
     """Abstract base class for image loading strategies."""
 
     # Priority: lower = tried first
@@ -50,8 +67,8 @@ class LoadStrategy(ABC):
         pass
 
     @abstractmethod
-    def load(self, file_path: str | Path) -> LoadedImage:
-        """Load the image and return standardized LoadedImage."""
+    def load(self, file_path: str | Path) -> Loaded_Image:
+        """Load the image and return standardized Loaded_Image."""
         pass
 
     @property
@@ -61,7 +78,7 @@ class LoadStrategy(ABC):
         pass
 
 
-class GDALStrategy(LoadStrategy):
+class GDAL_Strategy(Load_Strategy):
     """Strategy for loading GeoTIFF and other GDAL-supported formats."""
 
     priority = 1  # Highest priority for geospatial images
@@ -102,7 +119,7 @@ class GDALStrategy(LoadStrategy):
         except Exception:
             return False
 
-    def load(self, file_path: str | Path) -> LoadedImage:
+    def load(self, file_path: str | Path) -> Loaded_Image:
         """Load image using rasterio."""
         if not self._check_gdal():
             raise ImportError("rasterio is not available")
@@ -176,7 +193,7 @@ class GDALStrategy(LoadStrategy):
                     except json.JSONDecodeError:
                         rpc_data = {'raw': rpc_data}
 
-                return LoadedImage(
+                return Loaded_Image(
                     data=image_data,
                     path=path,
                     width=width,
@@ -196,7 +213,7 @@ class GDALStrategy(LoadStrategy):
             raise ValueError(f"Could not load image: {e}")
 
 
-class OpenCVStrategy(LoadStrategy):
+class OpenCV_Strategy(Load_Strategy):
     """Strategy for loading standard image formats using OpenCV."""
 
     priority = 10  # Medium priority
@@ -211,7 +228,7 @@ class OpenCVStrategy(LoadStrategy):
         ext = path.suffix.lower()
         return ext in ('.jpg', '.jpeg', '.png', '.bmp', '.tif', '.tiff', '.webp')
 
-    def load(self, file_path: str | Path) -> LoadedImage:
+    def load(self, file_path: str | Path) -> Loaded_Image:
         """Load image using OpenCV."""
         import cv2
 
@@ -236,7 +253,7 @@ class OpenCVStrategy(LoadStrategy):
 
         height, width = image.shape[:2]
 
-        return LoadedImage(
+        return Loaded_Image(
             data=image,
             path=path,
             width=width,
@@ -248,7 +265,7 @@ class OpenCVStrategy(LoadStrategy):
         )
 
 
-class PILStrategy(LoadStrategy):
+class PIL_Strategy(Load_Strategy):
     """Strategy for loading images using PIL/Pillow (fallback)."""
 
     priority = 100  # Lowest priority, universal fallback
@@ -261,7 +278,7 @@ class PILStrategy(LoadStrategy):
         """PIL can load almost any image format."""
         return True  # Universal fallback
 
-    def load(self, file_path: str | Path) -> LoadedImage:
+    def load(self, file_path: str | Path) -> Loaded_Image:
         """Load image using PIL."""
         from PIL import Image
 
@@ -274,7 +291,7 @@ class PILStrategy(LoadStrategy):
         height, width = image.shape[:2]
         channels = image.shape[2] if len(image.shape) > 2 else 1
 
-        return LoadedImage(
+        return Loaded_Image(
             data=image,
             path=path,
             width=width,
@@ -290,20 +307,20 @@ class PILStrategy(LoadStrategy):
         )
 
 
-class ImageLoader:
+class Image_Loader:
     """Coordinator class that manages loading strategies."""
 
     def __init__(self):
         # Initialize strategies in priority order
-        self._strategies: list[LoadStrategy] = [
-            GDALStrategy(),
-            OpenCVStrategy(),
-            PILStrategy(),
+        self._strategies: list[Load_Strategy] = [
+            GDAL_Strategy(),
+            OpenCV_Strategy(),
+            PIL_Strategy(),
         ]
         # Sort by priority
         self._strategies.sort(key=lambda s: s.priority)
 
-    def load(self, file_path: str | Path) -> LoadedImage:
+    def load(self, file_path: str | Path) -> Loaded_Image:
         """
         Load an image using the best available strategy.
 
@@ -313,7 +330,7 @@ class ImageLoader:
             file_path: Path to the image file
 
         Returns:
-            LoadedImage with standardized data
+            Loaded_Image with standardized data
 
         Raises:
             ValueError: If no strategy can load the file
@@ -343,24 +360,24 @@ class ImageLoader:
         """Get list of supported file extensions."""
         return list(SUPPORTED_IMAGE_EXTENSIONS)
 
-    def add_strategy(self, strategy: LoadStrategy):
+    def add_strategy(self, strategy: Load_Strategy):
         """Add a custom loading strategy."""
         self._strategies.append(strategy)
         self._strategies.sort(key=lambda s: s.priority)
 
 
 # Global singleton instance
-_image_loader: ImageLoader | None = None
+_image_loader: Image_Loader | None = None
 
 
-def get_image_loader() -> ImageLoader:
-    """Get the global ImageLoader instance."""
+def get_image_loader() -> Image_Loader:
+    """Get the global Image_Loader instance."""
     global _image_loader
     if _image_loader is None:
-        _image_loader = ImageLoader()
+        _image_loader = Image_Loader()
     return _image_loader
 
 
-def load_image(file_path: str | Path) -> LoadedImage:
+def load_image(file_path: str | Path) -> Loaded_Image:
     """Convenience function to load an image."""
     return get_image_loader().load(file_path)

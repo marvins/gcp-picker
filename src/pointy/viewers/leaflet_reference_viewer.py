@@ -1,27 +1,42 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    leaflet_reference_viewer.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Leaflet Reference Viewer - Web-based map viewer with Leaflet and ArcGIS services
 """
 
-# Standard library imports
-import os
+#  Python Standard Libraries
 import logging
+import os
 import tempfile
 from pathlib import Path
+
+#  Third-Party Libraries
+import folium
 
 # Set Qt attributes BEFORE any Qt imports
 from qtpy.QtCore import QCoreApplication, Qt
 QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 
-# Third-party imports
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QComboBox, QSizePolicy, QPushButton, QLineEdit, QScrollArea,
-                           QTabWidget, QFormLayout, QSpinBox, QDoubleSpinBox)
+from qtpy.QtCore import QObject, QUrl, Signal, Slot, QTimer
 from qtpy.QtGui import QFont
-from qtpy.QtCore import Signal, QUrl, QObject, Slot, QTimer
-import folium
+from qtpy.QtWebChannel import QWebChannel
 from qtpy.QtWebEngineCore import QWebEngineSettings
 from qtpy.QtWebEngineWidgets import QWebEngineView
-from qtpy.QtWebChannel import QWebChannel
+from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+                           QLabel, QLineEdit, QPushButton, QScrollArea, QSizePolicy,
+                           QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 # Project imports
 from pointy.core.config_manager import get_config_manager

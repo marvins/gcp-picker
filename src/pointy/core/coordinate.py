@@ -22,8 +22,8 @@ It supports various coordinate systems and provides utilities for coordinate con
 # Standard Library Imports
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Union
 from enum import Enum
+from typing import Union
 import math
 
 # Third-Party Imports

@@ -1,14 +1,32 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gcp_processor.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 GCP Processor - Core logic for managing ground control points
 """
 
-import json
+#  Python Standard Libraries
 import csv
+import json
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Dict, List, Tuple
 
+#  Third-Party Libraries
+
+#  Project Libraries
+from pointy.core.coordinate import Geographic, Pixel, UTM
 from pointy.core.gcp import GCP
-from pointy.core.coordinate import Pixel, Geographic, UTM
 from pointy.core.terrain import elevation as get_elevation
 
 class GCP_Processor:
@@ -35,7 +53,7 @@ class GCP_Processor:
         if gcp_id in self.gcps:
             del self.gcps[gcp_id]
 
-    def get_gcp(self, gcp_id: int) -> Optional[GCP]:
+    def get_gcp(self, gcp_id: int) -> GCP | None:
         """Get a GCP by ID."""
         return self.gcps.get(gcp_id)
 
@@ -80,11 +98,11 @@ class GCP_Processor:
         """Check if there's a pending reference point."""
         return self.pending_reference_point is not None
 
-    def get_pending_test_point(self) -> Optional[Tuple[float, float]]:
+    def get_pending_test_point(self) -> Tuple[float, float] | None:
         """Get pending test point."""
         return self.pending_test_point
 
-    def get_pending_reference_point(self) -> Optional[Tuple[float, float, float, float]]:
+    def get_pending_reference_point(self) -> Tuple[float, float, float, float] | None:
         """Get pending reference point."""
         return self.pending_reference_point
 

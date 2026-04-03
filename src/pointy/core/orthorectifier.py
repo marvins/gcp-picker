@@ -1,11 +1,29 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    orthorectifier.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Orthorectifier - RPC-based orthorectification with progressive updates
 """
 
+#  Python Standard Libraries
 import os
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List
 
+#  Third-Party Libraries
+
+#  Project Libraries
 from pointy.core.gcp import GCP
 
 class Orthorectifier:
@@ -15,7 +33,7 @@ class Orthorectifier:
     def __init__(self):
         self.orthorectification_complete = None  # Would be Signal
 
-    def orthorectify(self, image_path: str, gcps: List[GCP], rpc_data: Optional[Dict] = None):
+    def orthorectify(self, image_path: str, gcps: List[GCP], rpc_data: Dict | None = None):
         """Perform orthorectification using GCPs and optional RPC data."""
         try:
             from osgeo import gdal, osr

@@ -1,11 +1,28 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    resources.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Qt Resources - Simple resource management for Pointy-McPointface
 """
 
+#  Python Standard Libraries
 import os
 from pathlib import Path
-from qtpy.QtGui import QPixmap, QIcon
+
+#  Third-Party Libraries
 from qtpy.QtCore import QResource, Qt
+from qtpy.QtGui import QIcon, QPixmap
 
 class Resources:
     """Resource manager for application assets."""

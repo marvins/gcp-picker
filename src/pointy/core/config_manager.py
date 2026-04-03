@@ -1,12 +1,27 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    config_manager.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Configuration Manager - Load and manage application configuration
 """
 
+#  Python Standard Libraries
 import json
 import os
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -49,7 +64,7 @@ class Application_Settings:
 class Config_Manager:
     """Manages application configuration from JSON files."""
 
-    def __init__(self, config_dir: Optional[Path] = None):
+    def __init__(self, config_dir: Path | None = None):
         if config_dir is None:
             # Default to data/config relative to project root
             project_root = Path(__file__).parent.parent.parent.parent
@@ -142,7 +157,7 @@ class Config_Manager:
         ]
         return sorted(enabled_services, key=lambda x: x.priority)
 
-    def get_imagery_service(self, service_name: str) -> Optional[Imagery_Service]:
+    def get_imagery_service(self, service_name: str) -> Imagery_Service | None:
         """Get a specific imagery service by name."""
         for service in self.imagery_services_config.values():
             if service.name == service_name:

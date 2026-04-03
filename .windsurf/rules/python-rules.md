@@ -38,6 +38,7 @@ The project follows Rust-style naming conventions adapted for Python:
 # Module Rules
 
 - **ALL imports must be at the top of the file** - No inline imports inside functions or methods
+- **Use full imports, not local imports**: Always use full module paths in imports, not relative imports
 - Import modules in this sequence:
 
 ```python
@@ -50,8 +51,8 @@ import numpy as np
 from qtpy.QtWidgets import QApplication, QMainWindow
 
 # Project Libraries
-from app.core.coordinate import Geographic, Pixel, UTM
-from app.core.terrain import elevation
+from pointy.core.coordinate import Geographic, Pixel, UTM
+from pointy.core.terrain import elevation
 ```
 
 - **No exceptions**: Even if an import is only used in one method, it must be at the top of the file

@@ -3,9 +3,9 @@ GCP Panel - Ground Control Point management panel
 """
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QToolBar, QSizePolicy)
+                           QPushButton, QToolBar, QSizePolicy, QTextEdit, QFrame)
 from qtpy.QtCore import Signal, Qt, QSize
-from qtpy.QtGui import QFont
+from qtpy.QtGui import QFont, QTextCursor
 
 from pointy.widgets.gcp_manager import GCP_Manager
 
@@ -22,6 +22,8 @@ class GCP_Panel(QWidget):
     save_gcps_requested = Signal()  # Save GCPs to file
     load_gcps_requested = Signal()  # Load GCPs from file
     clear_gcps_requested = Signal()  # Clear all GCPs
+    create_gcp_requested = Signal()  # Create new GCP
+    export_gcps_requested = Signal()  # Export GCPs to file
 
     def __init__(self):
         super().__init__()
@@ -71,6 +73,9 @@ class GCP_Panel(QWidget):
         # GCP Manager (reuse existing widget)
         self.gcp_manager = GCP_Manager()
         layout.addWidget(self.gcp_manager)
+
+        # GCP Info Display
+        self.setup_gcp_info_display(layout)
 
         # Connect signals
         self.gcp_manager.gcp_added.connect(self.gcp_added)
@@ -175,6 +180,18 @@ class GCP_Panel(QWidget):
 
         toolbar.addSeparator()
 
+        # Create GCP button
+        create_action = toolbar.addAction("➕ Create")
+        create_action.setToolTip("Create new GCP from selected points")
+        create_action.triggered.connect(self._create_gcp_requested)
+
+        # Export GCPs button
+        export_action = toolbar.addAction("📤 Export")
+        export_action.setToolTip("Export GCPs to file")
+        export_action.triggered.connect(self._export_gcps_requested)
+
+        toolbar.addSeparator()
+
         # Clear All GCPs button
         clear_action = toolbar.addAction("🗑️ Clear All")
         clear_action.setToolTip("Remove all ground control points")
@@ -182,3 +199,49 @@ class GCP_Panel(QWidget):
 
         # Add toolbar to layout
         parent_layout.addWidget(toolbar)
+
+    def setup_gcp_info_display(self, parent_layout):
+        """Setup the GCP information display area."""
+        # GCP info frame
+        info_frame = QFrame()
+        info_frame.setFrameStyle(QFrame.StyledPanel)
+        info_layout = QVBoxLayout(info_frame)
+
+        info_title = QLabel("Current GCP")
+        info_title.setFont(QFont("Arial", 9, QFont.Bold))
+        info_layout.addWidget(info_title)
+
+        self.gcp_info = QTextEdit()
+        self.gcp_info.setMaximumHeight(100)
+        self.gcp_info.setReadOnly(True)
+        info_layout.addWidget(self.gcp_info)
+
+        parent_layout.addWidget(info_frame)
+
+    def update_gcp_info(self, gcp):
+        """Update the GCP information display."""
+        if gcp:
+            info = f"""GCP ID: {gcp.id}
+Test Pixel: ({gcp.test_pixel.x_px:.1f}, {gcp.test_pixel.y_px:.1f})
+Reference Pixel: ({gcp.reference_pixel.x_px:.1f}, {gcp.reference_pixel.y_px:.1f})
+Geographic: ({gcp.geographic.latitude_deg:.6f}, {gcp.geographic.longitude_deg:.6f})
+Elevation: {gcp.geographic.altitude_m:.1f}m
+Error: {gcp.error:.2f}m" if gcp.error else "N/A"
+Enabled: {gcp.enabled}"""
+        else:
+            info = "No GCP selected"
+
+        self.gcp_info.setText(info)
+        self.gcp_info.moveCursor(QTextCursor.Start)
+
+    def clear_gcp_info(self):
+        """Clear the GCP information display."""
+        self.gcp_info.clear()
+
+    def _create_gcp_requested(self):
+        """Handle Create GCP button click."""
+        self.create_gcp_requested.emit()
+
+    def _export_gcps_requested(self):
+        """Handle Export GCPs button click."""
+        self.export_gcps_requested.emit()

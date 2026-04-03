@@ -1,3 +1,17 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    constants.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Constants - Centralized configuration values
 
@@ -5,8 +19,9 @@ All hardcoded values from across the application are defined here
 for easy maintenance and configuration.
 """
 
-from pathlib import Path
+#  Python Standard Libraries
 import tempfile
+from pathlib import Path
 
 # =============================================================================
 # VERSION

@@ -1,16 +1,33 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    imagery_api.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Imagery API - Rasterio-based imagery handling with metadata parsing
 """
 
+#  Python Standard Libraries
 import json
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
 
+#  Third-Party Libraries
 import rasterio
 from pyproj import Transformer
 
+#  Project Libraries
 from pointy.core.gdal_reader import GDALReader
 
 
@@ -24,11 +41,11 @@ class Imagery_Info:
     has_geotransform: bool
     has_gcps: bool
     has_projection: bool
-    epsg_code: Optional[int] = None
+    epsg_code: int | None = None
     gcp_count: int = 0
-    geotransform: Optional[Tuple] = None
-    center_lat: Optional[float] = None
-    center_lon: Optional[float] = None
+    geotransform: Tuple | None = None
+    center_lat: float | None = None
+    center_lon: float | None = None
     metadata: Dict[str, Any] = None
 
     def has_spatial_info(self) -> bool:
@@ -43,7 +60,7 @@ class Imagery_Loader:
         self.logger = logging.getLogger(__name__)
         self.gdal_reader = GDALReader()
 
-    def get_imagery_info(self, file_path: str | Path) -> Optional[Imagery_Info]:
+    def get_imagery_info(self, file_path: str | Path) -> Imagery_Info | None:
         """Get comprehensive information about an imagery file.
 
         Args:
@@ -128,7 +145,7 @@ class Imagery_Loader:
             return True  # Can't read file, assume needs seed
         return not info.has_spatial_info()
 
-    def load_gcp_file(self, gcp_file_path: str | Path) -> Optional[List[Dict]]:
+    def load_gcp_file(self, gcp_file_path: str | Path) -> List[Dict] | None:
         """Load GCP data from a JSON file.
 
         Args:
@@ -160,7 +177,7 @@ class Imagery_Loader:
             self.logger.error(f"Error loading GCP file: {e}")
             return None
 
-    def get_image_dimensions(self, file_path: str | Path) -> Optional[Tuple[int, int]]:
+    def get_image_dimensions(self, file_path: str | Path) -> Tuple[int, int] | None:
         """Get image width and height.
 
         Args:

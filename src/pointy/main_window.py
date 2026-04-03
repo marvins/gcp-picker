@@ -79,6 +79,7 @@ class Main_Window(QMainWindow):
         self.gcp_processor = GCP_Processor()
         self.orthorectifier = Orthorectifier()
         self.collection_manager = Collection_Manager()
+        self._pending_seed_location = None
         self.imagery_loader = Imagery_Loader()
 
         # Setup UI
@@ -256,9 +257,9 @@ class Main_Window(QMainWindow):
 
     def connect_signals(self):
         """Connect signals between components."""
-        # Test viewer signals
-        self.test_viewer.point_selected.connect(self.on_test_point_selected)
+        # Connect test viewer signals
         self.test_viewer.image_loaded.connect(self.on_test_image_loaded)
+        self.test_viewer.cursor_moved.connect(self.on_test_cursor_moved)
         self.test_viewer.gcp_point_clicked.connect(self.on_test_gcp_clicked)
         self.test_viewer.image_loaded.connect(self._on_image_loaded_update_histogram)
         self.test_viewer.image_adjusted.connect(self._on_image_adjusted_update_histogram)
@@ -276,6 +277,8 @@ class Main_Window(QMainWindow):
         self.gcp_panel.save_gcps_requested.connect(self.save_gcps)
         self.gcp_panel.load_gcps_requested.connect(self.load_gcps)
         self.gcp_panel.clear_gcps_requested.connect(self.clear_all_gcps)
+        self.gcp_panel.create_gcp_requested.connect(self.create_gcp_from_pending_points)
+        self.gcp_panel.export_gcps_requested.connect(self.export_gcps)
 
         # View control panel signals
         view_panel = self.sidebar.get_view_control_panel()
@@ -306,7 +309,15 @@ class Main_Window(QMainWindow):
     def on_test_image_loaded(self, image_path):
         """Handle test image loading."""
         self.gcp_processor.set_test_image_path(image_path)
-        self.status_bar.showMessage(f'Test image loaded: {Path(image_path).name}')
+
+        # Handle seed location if pending
+        if self._pending_seed_location:
+            lat, lon = self._pending_seed_location
+            self.reference_viewer.set_center(lat, lon)
+            self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
+            self._pending_seed_location = None
+        else:
+            self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
 
         # Apply DRA if auto-stretch is enabled
         view_panel = self.sidebar.get_view_control_panel()
@@ -354,6 +365,25 @@ class Main_Window(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
                 self.status_bar.showMessage('Failed to save GCPs')
+
+    def export_gcps(self):
+        """Export GCPs to file."""
+        if not self.gcp_processor.has_gcps():
+            QMessageBox.information(self, 'Info', 'No GCPs to export')
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 'Export GCPs', '',
+            'GCP Files (*.gcp *.txt);;CSV Files (*.csv);;All Files (*)'
+        )
+
+        if file_path:
+            try:
+                self.gcp_processor.save_gcps(file_path)
+                self.status_bar.showMessage(f'Exported {self.gcp_processor.gcp_count()} GCPs to file')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to export GCPs:\n{str(e)}')
+                self.status_bar.showMessage('Failed to export GCPs')
 
     def load_gcps(self):
         """Load GCPs from file."""
@@ -703,26 +733,23 @@ class Main_Window(QMainWindow):
             self.sidebar.get_collection_nav_panel().update_counter(0, 0)
 
     def _load_collection_image(self, image_path: str):
-        """Helper to load a collection image with seed handling."""
+        """Helper to load a collection image with seed handling using async loader."""
         needs_seed = self.imagery_loader.needs_seed_location(image_path)
         seed_location = self.collection_manager.get_collection_seed_location()
 
-        try:
-            self.test_viewer.load_image(image_path)
+        # Use async loading to prevent GUI lockup
+        self.test_viewer.load_image(image_path)
 
-            if needs_seed and seed_location:
-                lat, lon = seed_location
-                self.reference_viewer.set_center(lat, lon)
-                self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
-            else:
-                self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
+        # Handle seed location after image loads (via signal)
+        if needs_seed and seed_location:
+            lat, lon = seed_location
+            # Store seed info for post-load processing
+            self._pending_seed_location = (lat, lon)
+        else:
+            self._pending_seed_location = None
 
-            # Update navigation counter
-            self._update_nav_counter()
-
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
-            raise
+        # Update navigation counter
+        self._update_nav_counter()
 
     def open_test_image(self):
         """Open a single test image by creating a temporary collection."""

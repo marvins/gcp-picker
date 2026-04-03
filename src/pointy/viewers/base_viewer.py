@@ -1,3 +1,17 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    base_viewer.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Base Viewer - Abstract base class for image viewers
 
@@ -8,13 +22,15 @@ Provides common functionality for both test and reference image viewers includin
 - Coordinate transformations
 """
 
+#  Python Standard Libraries
 from abc import ABC, abstractmethod
 from typing import Any
 
+#  Third-Party Libraries
 import numpy as np
-from qtpy.QtWidgets import QWidget, QLabel
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QImage, QPixmap
+from qtpy.QtWidgets import QLabel, QWidget
 
 
 
