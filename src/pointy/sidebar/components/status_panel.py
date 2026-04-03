@@ -6,7 +6,7 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QLabel,
                            QTextEdit, QFrame)
 from qtpy.QtGui import QFont, QTextCursor
 
-from app.widgets.status_panel import Status_Panel as Original_Status_Panel
+from pointy.widgets.status_panel import Status_Panel as Original_Status_Panel
 
 
 class Status_Panel(QWidget):

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import rasterio
 from pyproj import Transformer
 
-from app.core.gdal_reader import GDALReader
+from pointy.core.gdal_reader import GDALReader
 
 
 @dataclass

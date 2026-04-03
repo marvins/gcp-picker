@@ -17,13 +17,24 @@ Pointy-McPointface - Main Entry Point
 """
 
 #  Python Standard Libraries
+import os
 import sys
+import logging
 import argparse
+from pathlib import Path
 
-from pointy import MainWindow
+#  Third-Party Libraries
 from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import QSettings
+from qtpy.QtCore import qInstallMessageHandler, QtMsgType, QMessageLogContext
 
+#  Project Libraries
+from pointy import __version__
+from pointy import get_main_window
+
+def qt_message_handler(mode, context, message):
+    """Qt message handler to force crashes in the Qt event loop."""
+    if mode == QtMsgType.QtCriticalMsg or mode == QtMsgType.QtFatalMsg:
+        raise RuntimeError(message)
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -55,17 +66,35 @@ Examples:
 
 def setup_logging(verbose: bool = False):
     """Setup logging configuration."""
-    import logging
 
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler("pointy.log")
-        ]
-    )
+
+    # Create formatters
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s")
+
+    # Setup handlers
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+
+    file_handler = logging.FileHandler("pointy.log")
+    file_handler.setLevel(logging.DEBUG)  # Always debug to file
+    file_handler.setFormatter(formatter)
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.handlers.clear()
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+    # Suppress verbose debug messages
+    logging.getLogger("matplotlib.font_manager").setLevel(logging.WARNING)
+    logging.getLogger("rasterio.env").setLevel(logging.WARNING)
+    logging.getLogger("rasterio._base").setLevel(logging.WARNING)
+    logging.getLogger("rasterio._io").setLevel(logging.WARNING)
+    logging.getLogger("rasterio._filepath").setLevel(logging.WARNING)
+    logging.getLogger("rasterio._env").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
     logger.info("Starting Pointy-McPointface application")
@@ -77,27 +106,44 @@ def main():
     args = parse_arguments()
 
     # Setup logging
-    setup_logging(args.verbose)
+    setup_logging(verbose=args.verbose)
+
+    logger = logging.getLogger(__name__)
+
+    # Install Qt message handler to catch Qt errors
+    qInstallMessageHandler(qt_message_handler)
+
+    # Install exception hook to catch all unhandled exceptions
+    def exception_hook(exc_type, exc_value, exc_traceback):
+        logger.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        os._exit(1)
+
+    sys.excepthook = exception_hook
 
     # Create Qt application
     app = QApplication(sys.argv)
     app.setApplicationName("Pointy-McPointface")
     app.setApplicationVersion("1.0.0")
-    app.setOrganizationName("Terminus-Geo")
+    app.setOrganizationName("Terminus LLC")
 
-    # Setup Qt settings
-    QSettings.setDefaultFormat(QSettings.IniFormat)
+    logger.info("Creating main window")
 
     # Create main window
+    MainWindow = get_main_window()
     main_window = MainWindow()
     main_window.show()
 
-    # Load collection if specified
     if args.collection:
         main_window.load_collection_from_path(args.collection)
 
-    # Start event loop
-    sys.exit(app.exec_())
+    logger.info("Starting Qt event loop")
+
+    # Start application
+    return_code = app.exec()
+
+    logger.info(f"Application exited with code: {return_code}")
+    return return_code
 
 
 if __name__ == "__main__":

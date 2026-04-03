@@ -303,7 +303,7 @@ class Manager:
             self._load_cache()
 
         # Coordinate transformer
-        self.coord_transformer = CoordinateTransformer()
+        self.coord_transformer = Coordinate_Transformer()
 
     def add_local_dem(self, dem_file: str | Path):
         """Add a local DEM file as an elevation source."""

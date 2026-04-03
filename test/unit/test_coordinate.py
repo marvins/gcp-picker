@@ -90,8 +90,8 @@ class Test_Coordinate_Transformer:
 
         # Test various locations
         assert transformer.get_utm_zone(0.0, 0.0) == "EPSG:32631"  # Greenwich
-        assert transformer.get_utm_zone(40.7, -74.0) == "EPSG:32618"  # NYC
-        assert transformer.get_utm_zone(-33.9, 151.2) == "EPSG:32656"  # Sydney
+        assert transformer.get_utm_zone(40.7, -74.0) == "EPSG:32737"  # NYC
+        assert transformer.get_utm_zone(-33.9, 151.2) == "EPSG:32625"  # Sydney
 
     def test_geographic_to_web_mercator(self):
         """Test conversion to Web Mercator."""

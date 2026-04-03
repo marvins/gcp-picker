@@ -7,9 +7,9 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
-from app.core.gcp import GCP
-from app.core.coordinate import create_pixel, create_geographic
-from app.core.terrain import elevation as get_elevation
+from pointy.core.gcp import GCP
+from pointy.core.coordinate import create_pixel, create_geographic
+from pointy.core.terrain import elevation as get_elevation
 
 class GCP_Processor:
     """Core processor for ground control points."""

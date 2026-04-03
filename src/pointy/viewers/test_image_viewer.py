@@ -17,21 +17,19 @@ Test Image Viewer - Left panel for displaying and selecting points in test image
 """
 
 #  Python Standard Libraries
-import json
+import logging
 from pathlib import Path
 
 #  Third-Party Libraries
-import numpy as np
-import rasterio
 import cv2
-from PIL import Image
-from qtpy.QtCore import Qt, Signal
-from qtpy.QtGui import QImage, QPixmap, QFont
+import numpy as np
+from qtpy.QtCore import Qt, Signal, QEvent
+from qtpy.QtGui import QImage, QPixmap, QFont, QWheelEvent
 from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QScrollArea)
+                           QPushButton)
 
 #  Project Libraries
-from pointy.widgets.image_canvas import Image_Canvas
+from pointy.widgets.graphics_image_view import Graphics_Image_View
 
 class Test_Image_Viewer(QWidget):
     """Viewer for test image with point selection capabilities."""
@@ -90,19 +88,13 @@ class Test_Image_Viewer(QWidget):
         self.info_label.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
         layout.addWidget(self.info_label)
 
-        # Scroll area for image
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setAlignment(Qt.AlignCenter)
+        # Image view (replaces scroll area + image canvas)
+        self.image_view = Graphics_Image_View()
+        self.image_view.point_clicked.connect(self.on_point_clicked)
+        self.image_view.gcp_point_clicked.connect(self.on_gcp_point_clicked)
+        self.image_view.cursor_moved.connect(self._on_cursor_moved)
 
-        # Image canvas
-        self.image_canvas = Image_Canvas()
-        self.image_canvas.point_clicked.connect(self.on_point_clicked)
-        self.image_canvas.gcp_point_clicked.connect(self.on_gcp_point_clicked)
-        self.image_canvas.cursor_moved.connect(self._on_cursor_moved)
-        self.scroll_area.setWidget(self.image_canvas)
-
-        layout.addWidget(self.scroll_area)
+        layout.addWidget(self.image_view)
 
         # Status bar
         self.status_label = QLabel("Ready")
@@ -145,6 +137,9 @@ class Test_Image_Viewer(QWidget):
             # Update info
             height, width = self.current_image.shape[:2]
             self.info_label.setText(f"{Path(image_path).name} - {width}x{height}px")
+
+            # Set image data for histogram calculations
+            self.image_view.set_image_data(self.original_image, self.bit_depth, self.dtype)
 
             # Emit signal
             self.image_loaded.emit(image_path)
@@ -241,19 +236,19 @@ class Test_Image_Viewer(QWidget):
         )
 
         pixmap = QPixmap.fromImage(qt_image)
-        self.image_canvas.set_pixmap(pixmap)
+        self.image_view.set_pixmap(pixmap)
 
         # Draw GCP points
         self.draw_gcp_points()
 
     def draw_gcp_points(self):
         """Draw GCP points on the image."""
-        self.image_canvas.clear_gcp_points()
+        self.image_view.clear_gcp_points()
 
         for gcp_id, (x, y) in self.gcp_points.items():
-            self.image_canvas.add_gcp_point(x, y, gcp_id)
+            self.image_view.add_gcp_point(gcp_id, x, y)
 
-        self.image_canvas.update()
+        self.image_view.update()
 
     def on_point_clicked(self, x, y):
         """Handle point click on image."""
@@ -261,7 +256,7 @@ class Test_Image_Viewer(QWidget):
             return
 
         # Convert pixel coordinates to image coordinates
-        img_x, img_y = self.image_canvas.pixel_to_image_coords(x, y)
+        img_x, img_y = self.image_view.pixel_to_image_coords(x, y)
 
         # Emit signal
         self.point_selected.emit(img_x, img_y)
@@ -296,7 +291,7 @@ class Test_Image_Viewer(QWidget):
 
     def highlight_gcp_point(self, x, y):
         """Highlight a specific GCP point."""
-        self.image_canvas.highlight_point(x, y)
+        self.image_view.highlight_point(x, y)
 
     def clear_points(self):
         """Clear all GCP points."""

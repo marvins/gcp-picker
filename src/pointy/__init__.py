@@ -12,6 +12,9 @@
 #    Author:  Marvin Smith
 #    Date:    4/1/2026
 #
+"""
+Pointy-McPointface
+"""
 
 #  Project Libraries
 from ._version import (
@@ -21,6 +24,41 @@ from ._version import (
     get_version_info,
 )
 
-from .main_window import MainWindow
+# Core functionality (no GUI dependencies)
+from .core.coordinate import (
+    Coordinate_Transformer,
+    create_geographic,
+    create_pixel,
+    create_projected,
+)
 
-__all__ = ["MainWindow", "get_version_info", "__version__", "__build_date__", "__git_hash__"]
+from .core.terrain import (
+    Manager,
+    ElevationPoint,
+    elevation,
+    get_terrain_manager,
+)
+
+def get_main_window():
+    """Get MainWindow class (deferred import to avoid Qt initialization during tests)."""
+    from .main_window import MainWindow
+    return MainWindow
+
+__all__ = [
+    # Core functionality
+    "Coordinate_Transformer",
+    "create_geographic",
+    "create_pixel",
+    "create_projected",
+    "Manager",
+    "ElevationPoint",
+    "elevation",
+    "get_terrain_manager",
+    # GUI functionality (deferred)
+    "get_main_window",
+    # Version info
+    "get_version_info",
+    "__version__",
+    "__build_date__",
+    "__git_hash__"
+]

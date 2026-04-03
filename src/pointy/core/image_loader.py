@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 import rasterio
 
-from app.core.constants import SUPPORTED_IMAGE_EXTENSIONS
+from pointy.core.constants import SUPPORTED_IMAGE_EXTENSIONS
 
 
 @dataclass

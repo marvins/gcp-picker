@@ -56,6 +56,7 @@ class Image_View_Control_Panel(QWidget):
         # Auto-stretch checkbox
         self.auto_stretch_checkbox = QCheckBox("Auto-stretch (DRA)")
         self.auto_stretch_checkbox.setToolTip("Automatically stretch pixel values to full range")
+        self.auto_stretch_checkbox.setChecked(True)  # Enable DRA by default
         self.auto_stretch_checkbox.toggled.connect(self._on_auto_stretch_toggled)
         layout.addWidget(self.auto_stretch_checkbox)
 
@@ -234,7 +235,7 @@ class Image_View_Control_Panel(QWidget):
 
     def reset(self):
         """Reset all controls to default values."""
-        self.auto_stretch_checkbox.setChecked(False)
+        self.auto_stretch_checkbox.setChecked(True)  # Enable DRA by default
         self.min_pixel_spin.setValue(0)
         self.max_pixel_spin.setValue(255)
         self.brightness_slider.setValue(0)

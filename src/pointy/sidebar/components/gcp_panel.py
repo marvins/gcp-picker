@@ -7,7 +7,7 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QFont
 
-from app.widgets.gcp_manager import GCP_Manager
+from pointy.widgets.gcp_manager import GCP_Manager
 
 
 class GCP_Panel(QWidget):

@@ -7,8 +7,8 @@ from typing import Optional
 
 from rasterio.control import GroundControlPoint
 
-from app.core.coordinate import Geographic, Pixel, UTM
-from app.core.terrain import elevation
+from pointy.core.coordinate import Geographic, Pixel, UTM
+from pointy.core.terrain import elevation
 
 @dataclass
 class GCP:

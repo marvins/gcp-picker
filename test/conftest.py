@@ -17,7 +17,19 @@ Pytest configuration and fixtures for Pointy-McPointface tests.
 """
 
 import pytest
+import os
+import sys
+
+# Set Qt environment variables before any Qt imports
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+# Import Qt after setting environment variables
 from qtpy.QtWidgets import QApplication
+from qtpy.QtCore import QCoreApplication, Qt
+
+# Ensure Qt attributes are set for WebEngine
+if not QCoreApplication.instance():
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 
 
 @pytest.fixture(scope="session")
@@ -107,8 +119,9 @@ def pytest_configure(config):
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to add marks."""
 
-    # Add GUI marker to tests that import Qt modules
+    # Add appropriate markers to tests
     for item in items:
+        # Add GUI marker to tests that import Qt modules
         if "qtpy" in str(item.fspath) or any("qt" in mark.name for mark in item.iter_markers()):
             item.add_marker(pytest.mark.gui)
 

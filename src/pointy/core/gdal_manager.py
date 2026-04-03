@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import rasterio
 
-from app.core.constants import (
+from pointy.core.constants import (
     SUPPORTED_IMAGE_EXTENSIONS,
     SUPPORTED_REFERENCE_EXTENSIONS,
 )

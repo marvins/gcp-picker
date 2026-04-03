@@ -11,10 +11,10 @@ from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from qtpy.QtCore import Qt, Signal, QTimer
 from qtpy.QtGui import QPixmap, QFont
 
-from app.widgets.image_canvas import Image_Canvas
-from app.widgets.zoom_controls import Zoom_Controls
-from app.core.wms_client import WMSClient
-from app.core.gdal_reader import GDALReader
+from pointy.widgets.image_canvas import Image_Canvas
+from pointy.widgets.zoom_controls import Zoom_Controls
+from pointy.core.wms_client import WMSClient
+from pointy.core.gdal_reader import GDALReader
 
 class Reference_Viewer(QWidget):
     """Viewer for reference sources (WMS/WMTS/GDAL virtual rasters)."""
@@ -204,20 +204,16 @@ class Reference_Viewer(QWidget):
             self.status_label.setText("Please enter WMS service URL")
             return
 
-        try:
-            self.status_label.setText("Getting layers...")
-            layers = self.wms_client.get_layers(url)
+        self.status_label.setText("Getting layers...")
+        layers = self.wms_client.get_layers(url)
 
-            self.layer_combo.clear()
-            self.layer_combo.addItems(layers)
+        self.layer_combo.clear()
+        self.layer_combo.addItems(layers)
 
-            if layers:
-                self.status_label.setText(f"Found {len(layers)} layers")
-            else:
-                self.status_label.setText("No layers found")
-
-        except Exception as e:
-            self.status_label.setText(f"Error getting layers: {str(e)}")
+        if layers:
+            self.status_label.setText(f"Found {len(layers)} layers")
+        else:
+            self.status_label.setText("No layers found")
 
     def load_wms(self):
         """Load WMS layer."""
@@ -229,39 +225,35 @@ class Reference_Viewer(QWidget):
             self.status_label.setText("Please select service and layer")
             return
 
-        try:
-            self.status_label.setText("Loading WMS layer...")
+        self.status_label.setText("Loading WMS layer...")
 
-            # Get bounding box
-            bbox = [
-                self.bbox_min_x.value(),
-                self.bbox_min_y.value(),
-                self.bbox_max_x.value(),
-                self.bbox_max_y.value()
-            ]
+        # Get bounding box
+        bbox = [
+            self.bbox_min_x.value(),
+            self.bbox_min_y.value(),
+            self.bbox_max_x.value(),
+            self.bbox_max_y.value()
+        ]
 
-            # Load image from WMS
-            image_data, transform = self.wms_client.get_map(
-                url, layer, crs, bbox,
-                self.width_spin.value(),
-                self.height_spin.value()
-            )
+        # Load image from WMS
+        image_data, transform = self.wms_client.get_map(
+            url, layer, crs, bbox,
+            self.width_spin.value(),
+            self.height_spin.value()
+        )
 
-            if image_data is not None:
-                self.display_reference_image(image_data, transform, {
-                    'type': 'wms',
-                    'url': url,
-                    'layer': layer,
-                    'crs': crs,
-                    'bbox': bbox
-                })
+        if image_data is not None:
+            self.display_reference_image(image_data, transform, {
+                'type': 'wms',
+                'url': url,
+                'layer': layer,
+                'crs': crs,
+                'bbox': bbox
+            })
 
-                self.status_label.setText(f"Loaded WMS layer: {layer}")
-            else:
-                self.status_label.setText("Failed to load WMS layer")
-
-        except Exception as e:
-            self.status_label.setText(f"Error loading WMS: {str(e)}")
+            self.status_label.setText(f"Loaded WMS layer: {layer}")
+        else:
+            self.status_label.setText("Failed to load WMS layer")
 
     def browse_gdal_file(self):
         """Browse for GDAL virtual raster file."""
@@ -282,25 +274,21 @@ class Reference_Viewer(QWidget):
             self.status_label.setText("Please select a valid file")
             return
 
-        try:
-            self.status_label.setText("Loading GDAL source...")
+        self.status_label.setText("Loading GDAL source...")
 
-            # Load using GDAL reader
-            image_data, transform, metadata = self.gdal_reader.load_file(file_path)
+        # Load using GDAL reader
+        image_data, transform, metadata = self.gdal_reader.load_file(file_path)
 
-            if image_data is not None:
-                self.display_reference_image(image_data, transform, {
-                    'type': 'gdal',
-                    'file_path': file_path,
-                    'metadata': metadata
-                })
+        if image_data is not None:
+            self.display_reference_image(image_data, transform, {
+                'type': 'gdal',
+                'file_path': file_path,
+                'metadata': metadata
+            })
 
-                self.status_label.setText(f"Loaded GDAL source: {Path(file_path).name}")
-            else:
-                self.status_label.setText("Failed to load GDAL source")
-
-        except Exception as e:
-            self.status_label.setText(f"Error loading GDAL source: {str(e)}")
+            self.status_label.setText(f"Loaded GDAL source: {Path(file_path).name}")
+        else:
+            self.status_label.setText("Failed to load GDAL source")
 
     def display_reference_image(self, image_data, transform, reference_info):
         """Display reference image with georeferencing."""

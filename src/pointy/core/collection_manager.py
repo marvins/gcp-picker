@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from qtpy.QtCore import QObject, Signal
 
-from app.core.coordinate import Geographic
+from pointy.core.coordinate import Geographic
 
 
 @dataclass

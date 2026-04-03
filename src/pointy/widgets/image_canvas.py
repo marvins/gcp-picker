@@ -76,6 +76,9 @@ class Image_Canvas(QWidget):
         if not self.pixmap:
             return
 
+        # Accept the event to prevent it from being handled by the scroll area
+        event.accept()
+
         # Get wheel delta
         delta = event.angleDelta().y()
 
@@ -86,28 +89,42 @@ class Image_Canvas(QWidget):
         else:
             new_zoom = max(self.zoom_factor - zoom_step, 0.1)  # Min 0.1x zoom
 
-        # Get mouse position before zoom (in image coordinates)
-        mouse_pos = event.position()
-        img_x = mouse_pos.x() / self.zoom_factor
-        img_y = mouse_pos.y() / self.zoom_factor
+        # Get scroll area and current scroll position
+        scroll_area = self._get_scroll_area()
+        if not scroll_area:
+            self.set_zoom(new_zoom)
+            return
+
+        # Get current scroll values
+        h_scroll = scroll_area.horizontalScrollBar().value()
+        v_scroll = scroll_area.verticalScrollBar().value()
+
+        # Get mouse position in widget coordinates
+        mouse_x = event.position().x()
+        mouse_y = event.position().y()
+
+        # Debug logging
+        print(f"DEBUG: Before zoom - h_scroll={h_scroll}, v_scroll={v_scroll}, mouse=({mouse_x},{mouse_y}), zoom={self.zoom_factor}")
+
+        # Calculate the point in the image that is under the mouse before zoom
+        # This is: (scroll_position + mouse_position) / current_zoom
+        image_under_mouse_x = (h_scroll + mouse_x) / self.zoom_factor
+        image_under_mouse_y = (v_scroll + mouse_y) / self.zoom_factor
 
         # Apply zoom
         self.set_zoom(new_zoom)
 
-        # Adjust scroll to keep mouse over same image point
-        scroll_area = self.parent()
-        if isinstance(scroll_area, QScrollArea):
-            new_pixel_x = img_x * new_zoom
-            new_pixel_y = img_y * new_zoom
+        # Calculate new scroll position to keep the same image point under the mouse
+        # New scroll = (image_point * new_zoom) - mouse_position
+        new_h_scroll = int(image_under_mouse_x * new_zoom - mouse_x)
+        new_v_scroll = int(image_under_mouse_y * new_zoom - mouse_y)
 
-            # Calculate scroll position to center on mouse point
-            h_scroll = int(new_pixel_x - mouse_pos.x())
-            v_scroll = int(new_pixel_y - mouse_pos.y())
+        print(f"DEBUG: After zoom - new_h_scroll={new_h_scroll}, new_v_scroll={new_v_scroll}, new_zoom={new_zoom}")
+        print(f"DEBUG: Image point under mouse: ({image_under_mouse_x},{image_under_mouse_y})")
 
-            scroll_area.horizontalScrollBar().setValue(h_scroll)
-            scroll_area.verticalScrollBar().setValue(v_scroll)
-
-        event.accept()
+        # Apply new scroll position
+        scroll_area.horizontalScrollBar().setValue(new_h_scroll)
+        scroll_area.verticalScrollBar().setValue(new_v_scroll)
 
     def pixel_to_image_coords(self, pixel_x, pixel_y):
         """Convert pixel coordinates to image coordinates."""
@@ -219,6 +236,7 @@ class Image_Canvas(QWidget):
                 h_bar = scroll_area.horizontalScrollBar()
                 v_bar = scroll_area.verticalScrollBar()
 
+                # Update scroll position immediately for smooth panning
                 h_bar.setValue(h_bar.value() + delta_x)
                 v_bar.setValue(v_bar.value() + delta_y)
 

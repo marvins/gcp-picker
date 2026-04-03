@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional
 
-from app.core.gcp import GCP
+from pointy.core.gcp import GCP
 
 class Orthorectifier:
     """Handles RPC-based orthorectification using ground control points."""

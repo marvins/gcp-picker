@@ -424,6 +424,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Orthorectification failed:\n{str(e)}')
             self.status_bar.showMessage('Orthorectification failed')
+            raise
 
     def _on_image_loaded_update_histogram(self, image_path):
         """Update histogram when image is loaded."""
@@ -605,6 +606,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
             self.status_bar.showMessage('Failed to load collection image')
+            raise
 
     def load_next_collection_image(self):
         """Load next image in collection."""
@@ -666,6 +668,7 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
+            raise
 
     def post_init(self):
         """Post-initialization tasks."""

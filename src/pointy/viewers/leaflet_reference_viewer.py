@@ -7,18 +7,22 @@ import os
 import logging
 import tempfile
 
+# Set Qt attributes BEFORE any Qt imports
+from qtpy.QtCore import QCoreApplication, Qt
+QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
+
 # Third-party imports
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                            QComboBox, QSizePolicy)
-from qtpy.QtCore import Qt, Signal, QUrl, QObject, Slot
 from qtpy.QtGui import QFont
-from qtpy.QtWebEngineWidgets import QWebEngineView
-from qtpy.QtWebChannel import QWebChannel
+from qtpy.QtCore import Signal, QUrl, QObject, Slot
 import folium
 from qtpy.QtWebEngineCore import QWebEngineSettings
+from qtpy.QtWebEngineWidgets import QWebEngineView
+from qtpy.QtWebChannel import QWebChannel
 
 # Project imports
-from app.core.config_manager import get_config_manager
+from pointy.core.config_manager import get_config_manager
 
 
 class Leaflet_Bridge(QObject):
@@ -63,19 +67,12 @@ class Leaflet_Reference_Viewer(QWidget):
         self.imagery_services = self.config_manager.get_imagery_services_dict()
         self.logger.debug(f"Loaded {len(self.imagery_services)} imagery services")
 
-        # Initialize web components with error handling
-        try:
-            self.web_view = QWebEngineView()
-            self._configure_web_view_settings()
-            self.bridge = Leaflet_Bridge()
-            self.web_channel = QWebChannel()
-            self.logger.info("Web components initialized successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize web view: {e}")
-            # Fallback to a simple label
-            self.web_view = None
-            self.bridge = None
-            self.web_channel = None
+        # Initialize web components
+        self.web_view = QWebEngineView()
+        self._configure_web_view_settings()
+        self.bridge = Leaflet_Bridge()
+        self.web_channel = QWebChannel()
+        self.logger.info("Web components initialized successfully")
 
         self.setup_ui()
         if self.web_view is not None:
