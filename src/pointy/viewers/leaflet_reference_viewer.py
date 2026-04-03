@@ -6,6 +6,7 @@ Leaflet Reference Viewer - Web-based map viewer with Leaflet and ArcGIS services
 import os
 import logging
 import tempfile
+from pathlib import Path
 
 # Set Qt attributes BEFORE any Qt imports
 from qtpy.QtCore import QCoreApplication, Qt
@@ -13,9 +14,10 @@ QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
 
 # Third-party imports
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QComboBox, QSizePolicy)
+                           QComboBox, QSizePolicy, QPushButton, QLineEdit, QScrollArea,
+                           QTabWidget, QFormLayout, QSpinBox, QDoubleSpinBox)
 from qtpy.QtGui import QFont
-from qtpy.QtCore import Signal, QUrl, QObject, Slot
+from qtpy.QtCore import Signal, QUrl, QObject, Slot, QTimer
 import folium
 from qtpy.QtWebEngineCore import QWebEngineSettings
 from qtpy.QtWebEngineWidgets import QWebEngineView
@@ -23,6 +25,8 @@ from qtpy.QtWebChannel import QWebChannel
 
 # Project imports
 from pointy.core.config_manager import get_config_manager
+from pointy.core.terrain import Manager, Geographic
+from pointy.core.wms_client import WMSClient
 
 
 class Leaflet_Bridge(QObject):
@@ -57,7 +61,7 @@ class Leaflet_Reference_Viewer(QWidget):
     reference_loaded = Signal(dict)  # reference info
     cursor_moved = Signal(float, float, float)  # lat, lon, alt (alt optional)
 
-    def __init__(self):
+    def __init__(self, terrain_manager=None):
         super().__init__()
         self.current_reference = None
         self.gcp_points = {}  # gcp_id -> (x, y)
@@ -71,6 +75,13 @@ class Leaflet_Reference_Viewer(QWidget):
         self.config_manager = get_config_manager()
         self.imagery_services = self.config_manager.get_imagery_services_dict()
         self.logger.debug(f"Loaded {len(self.imagery_services)} imagery services")
+
+        # Store terrain manager with throttling
+        self.terrain_manager = terrain_manager
+        self.cursor_throttle_timer = QTimer()
+        self.cursor_throttle_timer.setSingleShot(True)
+        self.cursor_throttle_timer.timeout.connect(self._query_elevation_throttled)
+        self.pending_cursor_coords = None
 
         # Initialize web components
         self.web_view = QWebEngineView()
@@ -164,7 +175,7 @@ class Leaflet_Reference_Viewer(QWidget):
             # Connect bridge signals
             self.bridge.point_clicked.connect(self.on_javascript_point_clicked)
             self.bridge.map_ready.connect(self.on_map_ready)
-            self.bridge.cursor_moved.connect(self.cursor_moved.emit)
+            self.bridge.cursor_moved.connect(self.on_cursor_moved_throttled)
 
     def create_initial_map(self):
         """Create the initial Leaflet map."""
@@ -554,3 +565,47 @@ class Leaflet_Reference_Viewer(QWidget):
 
         self.web_view.setUrl(QUrl.fromLocalFile(self._map_html_path))
         self.status_label.setText(f"Map centered on ({lat:.4f}, {lon:.4f})")
+
+    def _query_elevation_throttled(self):
+        """Query elevation for pending cursor coordinates (throttled)."""
+        if self.pending_cursor_coords and self.terrain_manager:
+            lat, lon = self.pending_cursor_coords
+            try:
+                # Query elevation
+                geo_coord = Geographic(lat, lon)
+                elevation = self.terrain_manager.elevation(geo_coord)
+
+                if elevation is not None:
+                    # Update cursor signal with real altitude
+                    self.cursor_moved.emit(lat, lon, elevation)
+                    self.logger.debug(f"Elevation query successful: {elevation:.1f}m at ({lat:.4f}, {lon:.4f})")
+                else:
+                    # No elevation data available, emit with 0
+                    self.cursor_moved.emit(lat, lon, 0.0)
+                    self.logger.debug(f"No elevation data at ({lat:.4f}, {lon:.4f})")
+
+            except Exception as e:
+                self.logger.error(f"Elevation query failed: {e}")
+                # Fallback to 0 altitude
+                self.cursor_moved.emit(lat, lon, 0.0)
+
+        self.pending_cursor_coords = None
+
+    def on_cursor_moved_throttled(self, lat: float, lon: float):
+        """Handle cursor movement with throttling to avoid performance issues."""
+        # Store pending coordinates
+        self.pending_cursor_coords = (lat, lon)
+
+        # Start/restart throttle timer (12ms delay - 4x faster than 50ms)
+        self.cursor_throttle_timer.start(12)
+
+    def is_terrain_available(self) -> bool:
+        """Check if terrain elevation data is available."""
+        return self.terrain_manager is not None
+
+    def get_terrain_status(self) -> str:
+        """Get terrain status message."""
+        if self.terrain_manager is None:
+            return "Terrain data unavailable"
+        total_sources = sum(len(catalog.sources) for catalog in self.terrain_manager.sources) if self.terrain_manager.sources else 0
+        return f"Terrain data available ({total_sources} sources)"

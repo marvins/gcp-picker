@@ -509,16 +509,22 @@ class Manager:
 
         return None
 
-    def elevation(self, coord: Geographic) -> float | None:
-        """Get elevation for a geographic coordinate."""
+    def elevation(self, coord: Coordinate) -> float | None:
+        """Get elevation for any coordinate type."""
+        # Convert to geographic coordinates first
+        if coord.type() == Coordinate_Type.GEOGRAPHIC:
+            geo_coord = coord
+        else:
+            geo_coord = self.coord_transformer.convert(coord, Coordinate_Type.GEOGRAPHIC)
+
         # Check cache first
-        cache_key = self._cache_key(coord)
+        cache_key = self._cache_key(geo_coord)
 
         if self.cache_enabled and cache_key in self.elevation_cache:
             return self.elevation_cache[cache_key].coord.altitude_m
 
         # Query sources
-        point = self._query_sources(coord)
+        point = self._query_sources(geo_coord)
         if point is not None:
             # Cache the result
             if self.cache_enabled:
@@ -529,16 +535,22 @@ class Manager:
 
         return None
 
-    def elevation_point(self, coord: Geographic) -> Elevation_Point | None:
-        """Get elevation point with full metadata."""
+    def elevation_point(self, coord: Coordinate) -> Elevation_Point | None:
+        """Get elevation point with full metadata for any coordinate type."""
+        # Convert to geographic coordinates first
+        if coord.type() == Coordinate_Type.GEOGRAPHIC:
+            geo_coord = coord
+        else:
+            geo_coord = self.coord_transformer.convert(coord, Coordinate_Type.GEOGRAPHIC)
+
         # Check cache first
-        cache_key = self._cache_key(coord)
+        cache_key = self._cache_key(geo_coord)
 
         if self.cache_enabled and cache_key in self.elevation_cache:
             return self.elevation_cache[cache_key]
 
         # Query sources
-        point = self._query_sources(coord)
+        point = self._query_sources(geo_coord)
         if point is not None:
             # Cache the result
             if self.cache_enabled:

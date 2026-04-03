@@ -34,6 +34,8 @@ from pointy.widgets.splash_screen import Splash_Manager
 from pointy import __version__
 from pointy import get_main_window
 from pointy.resources import resources
+from pointy.core.terrain import Manager, Terrain_Catalog
+from pointy.core.config_manager import get_config_manager
 
 def qt_message_handler(mode, context, message):
     """Qt message handler to force crashes in the Qt event loop."""
@@ -136,6 +138,27 @@ def main():
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
 
+    # Initialize terrain manager
+    terrain_manager = None
+    try:
+        # Get application settings from config
+        config_manager = get_config_manager()
+        app_settings = config_manager.get_application_settings()
+
+        # Check if auto-fetch elevation is enabled
+        if app_settings and app_settings.auto_fetch_elevation:
+            catalog = Terrain_Catalog()
+            terrain_manager = Manager([catalog], cache_enabled=True)
+            if terrain_manager and terrain_manager.sources:
+                total_sources = sum(len(catalog.sources) for catalog in terrain_manager.sources)
+                logger.info(f"Terrain manager initialized with {total_sources} sources (auto-fetch enabled)")
+            else:
+                logger.warning("Terrain manager initialized but no terrain sources available")
+        else:
+            logger.info("Auto-fetch elevation disabled in configuration")
+    except Exception as e:
+        logger.error(f"Failed to initialize terrain manager: {e}")
+
     # Create and show splash screen
     splash_manager = Splash_Manager()
     splash = splash_manager.create_splash()
@@ -144,7 +167,7 @@ def main():
     splash_manager.next_step()  # "Creating main window..."
 
     # Create main window
-    main_window = Main_Window()
+    main_window = Main_Window(terrain_manager=terrain_manager)
 
     splash_manager.next_step()  # "Setting up UI components..."
     main_window.setup_ui()

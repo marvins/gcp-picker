@@ -33,8 +33,11 @@ from qtpy.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                         QMessageBox, QToolBar, QAction)
 
 #  Project Libraries
+from pointy import resources
 from pointy.viewers.test_image_viewer import Test_Image_Viewer
+from pointy.viewers.reference_viewer import Reference_Viewer
 from pointy.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
+from pointy.widgets.gcp_manager import GCP_Manager
 from pointy.widgets.about_dialog import show_about_dialog
 from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
 from pointy.core.gcp_processor import GCP_Processor
@@ -46,7 +49,7 @@ from pointy.resources import resources
 class Main_Window(QMainWindow):
     """Main application window for Pointy-McPointface."""
 
-    def __init__(self):
+    def __init__(self, terrain_manager=None):
         super().__init__()
         self.setWindowTitle("Pointy-McPointface")
 
@@ -54,6 +57,9 @@ class Main_Window(QMainWindow):
         app_icon = resources.get_app_icon()
         if not app_icon.isNull():
             self.setWindowIcon(app_icon)
+
+        # Store terrain manager for ortho module access
+        self.terrain_manager = terrain_manager
 
         # Get screen dimensions and set window size to fit
         screen = QGuiApplication.primaryScreen()
@@ -97,7 +103,7 @@ class Main_Window(QMainWindow):
         self.image_splitter = QSplitter(Qt.Horizontal)
 
         # Left panel - Reference viewer (Leaflet)
-        self.reference_viewer = Leaflet_Reference_Viewer()
+        self.reference_viewer = Leaflet_Reference_Viewer(terrain_manager=self.terrain_manager)
         ref_container = QWidget()
         ref_layout = QVBoxLayout(ref_container)
         ref_layout.setContentsMargins(0, 0, 0, 0)

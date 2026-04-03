@@ -37,8 +37,8 @@ class Splash_Screen(QSplashScreen):
         # Load logo using resource system
         self.logo_pixmap = resources.get_splash_logo()
 
-        # Create a pixmap for the splash screen
-        self.pixmap = QPixmap(500, 350)  # Increased height for better spacing
+        # Create a pixmap for the splash screen - reduced height, increased width
+        self.pixmap = QPixmap(700, 250)  # Wider for larger logo
         self.pixmap.fill(QColor(45, 45, 48))  # Dark background
 
         super().__init__(self.pixmap)
@@ -48,7 +48,7 @@ class Splash_Screen(QSplashScreen):
     def setup_ui(self):
         """Setup the splash screen UI."""
         # Set splash screen properties
-        self.setFixedSize(500, 350)
+        self.setFixedSize(700, 250)  # Match new dimensions
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.SplashScreen)
 
         # Progress tracking
@@ -60,68 +60,97 @@ class Splash_Screen(QSplashScreen):
         """Draw the splash screen contents."""
         painter.setPen(QColor(255, 255, 255))  # White text for dark background
 
-        # Draw logo if available
+        # Layout constants
+        left_margin = 20
+        logo_size = 200
+        content_start_x = left_margin + logo_size + 30
+        top_margin = 20
+
+        # Draw logo on left side if available
         if self.logo_pixmap and not self.logo_pixmap.isNull():
             # Enable composition mode for proper transparency handling
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
+
+            # Ensure the logo has an alpha channel for transparency
+            if not self.logo_pixmap.hasAlpha():
+                self.logo_pixmap = self.logo_pixmap.convertToFormat(QPixmap.Format_ARGB32)
+
+            # Scale logo to desired size
+            scaled_logo = self.logo_pixmap.scaled(
+                logo_size, logo_size,
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+
+            # Use SourceOver composition mode to preserve transparency
             painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
 
-            # Center logo at top with more padding
-            logo_x = (self.width() - self.logo_pixmap.width()) // 2
-            logo_y = 15  # Reduced top padding
-            painter.drawPixmap(logo_x, logo_y, self.logo_pixmap)
+            # Position logo on left side, vertically centered
+            logo_x = left_margin
+            logo_y = (self.height() - scaled_logo.height()) // 2
 
-            # Reset composition mode
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            # Draw the logo with transparency preserved
+            painter.drawPixmap(logo_x, logo_y, scaled_logo)
 
-            # Adjust text positions to account for logo with less spacing
-            text_start_y = logo_y + self.logo_pixmap.height() + 15  # Reduced spacing
-        else:
-            # Fallback to text only
-            text_start_y = 30
+        # Draw content on the right side
+        content_x = content_start_x
+
+        # Calculate total content height and center vertically
+        title_height = 40
+        title_spacing = 50
+        version_height = 25
+        version_spacing = 30
+        task_height = 20
+        task_spacing = 25
+        progress_height = 10
+
+        total_content_height = (title_height + title_spacing +
+                              version_height + version_spacing +
+                              task_height + task_spacing +
+                              progress_height)
+
+        # Center content in the available space (same vertical center as logo)
+        current_y = (self.height() - total_content_height) // 2
 
         # App title
-        title_font = QFont("Arial", 16, QFont.Bold)
+        title_font = QFont("Arial", 30, QFont.Bold)
         painter.setFont(title_font)
-        title_rect = QRect(0, text_start_y, self.width(), 30)  # 30px height for title
-        painter.drawText(title_rect, Qt.AlignCenter, "Pointy-McPointface")
+        title_rect = QRect(content_x, current_y, self.width() - content_x - 20, 40)
+        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignTop, "Pointy-McPointface")
+        current_y += 50
 
         # Version
-        version_font = QFont("Arial", 12)
+        version_font = QFont("Arial", 16)
         painter.setFont(version_font)
-        version_rect = QRect(0, text_start_y + 35, self.width(), 20)  # 20px height for version
-        painter.drawText(version_rect, Qt.AlignCenter, f"Version {__version__}")
+        version_rect = QRect(content_x, current_y, self.width() - content_x - 20, 25)
+        painter.drawText(version_rect, Qt.AlignLeft | Qt.AlignTop, f"Version {__version__}")
+        current_y += 30
 
         # Current task
-        task_font = QFont("Arial", 9)
+        task_font = QFont("Arial", 12)
         painter.setFont(task_font)
-        task_rect = QRect(0, text_start_y + 60, self.width(), 20)  # 20px height for task
-        painter.drawText(task_rect, Qt.AlignCenter, self.current_task)
+        task_rect = QRect(content_x, current_y, self.width() - content_x - 20, 20)
+        painter.drawText(task_rect, Qt.AlignLeft | Qt.AlignTop, self.current_task)
+        current_y += 25
 
-        # Progress bar background - moved down to give more space
-        progress_y = 270  # Lower position for progress bar
-        progress_height = 8  # Smaller height
-        progress_width = 300
-        progress_x = 100  # Center the progress bar
+        # Progress bar
+        progress_width = 200
+        progress_height = 10
+        progress_x = content_x
+        progress_y = current_y
 
-        # Draw progress bar background
-        painter.fillRect(progress_x, progress_y, progress_width, progress_height, QColor(60, 60, 60))
+        # Progress bar background
+        painter.fillRect(progress_x, progress_y, progress_width, progress_height, QColor(70, 70, 70))
 
-        # Draw progress bar fill
-        if self.progress > 0:
-            fill_width = int((self.progress / self.max_progress) * progress_width)
-            painter.fillRect(progress_x, progress_y, fill_width, progress_height, QColor(76, 175, 80))
-
-        # Draw progress bar border
-        painter.setPen(QColor(100, 100, 100))
-        painter.drawRect(progress_x, progress_y, progress_width, progress_height)
+        # Progress bar fill
+        fill_width = int((self.progress / self.max_progress) * progress_width)
+        painter.fillRect(progress_x, progress_y, fill_width, progress_height, QColor(100, 200, 100))
 
         # Progress percentage
-        painter.setPen(QColor(255, 255, 255))  # White text for dark background
-        painter.setFont(QFont("Arial", 10))
+        progress_font = QFont("Arial", 10)
+        painter.setFont(progress_font)
         progress_text = f"{self.progress}%"
-        progress_rect = QRect(0, progress_y + progress_height + 5, self.width(), 15)  # 15px height for percentage
-        painter.drawText(progress_rect, Qt.AlignCenter, progress_text)
+        progress_rect = QRect(progress_x + progress_width + 15, progress_y - 2, 50, progress_height + 4)
+        painter.drawText(progress_rect, Qt.AlignLeft | Qt.AlignVCenter, progress_text)
 
     def update_progress(self, value, task=None):
         """Update the progress bar and task text."""
