@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 from pointy.core.gcp import GCP
-from pointy.core.coordinate import create_pixel, create_geographic
+from pointy.core.coordinate import Pixel, Geographic, UTM
 from pointy.core.terrain import elevation as get_elevation
 
 class GCP_Processor:
@@ -102,12 +102,12 @@ class GCP_Processor:
         ref_x, ref_y, lon, lat = self.pending_reference_point
 
         # Create coordinate objects
-        test_pixel = create_pixel(test_x, test_y)
-        ref_pixel = create_pixel(ref_x, ref_y)
+        test_pixel = Pixel.create(test_x, test_y)
+        ref_pixel = Pixel.create(ref_x, ref_y)
 
         # Get elevation for the geographic coordinate
         elev = get_elevation(lat, lon)
-        geographic = create_geographic(lat, lon, elev)
+        geographic = Geographic.create(lat, lon, elev)
 
         gcp = GCP(
             id=self.next_gcp_id,
@@ -226,14 +226,14 @@ class GCP_Processor:
                         elevation = float(parts[7]) if len(parts) > 7 else None
 
                         # Create coordinate objects
-                        test_pixel = create_pixel(test_x, test_y)
-                        ref_pixel = create_pixel(ref_x, ref_y)
+                        test_pixel = Pixel.create(test_x, test_y)
+                        ref_pixel = Pixel.create(ref_x, ref_y)
 
                         # Get elevation if not provided
                         if elevation is None:
                             elevation = get_elevation(latitude, longitude)
 
-                        geographic = create_geographic(latitude, longitude, elevation)
+                        geographic = Geographic.create(latitude, longitude, elevation)
 
                         gcp = GCP(
                             id=gcp_id,
@@ -268,14 +268,14 @@ class GCP_Processor:
                     elevation = float(row.get('Elevation', 0)) if row.get('Elevation') else None
 
                     # Create coordinate objects
-                    test_pixel = create_pixel(test_x, test_y)
-                    ref_pixel = create_pixel(ref_x, ref_y)
+                    test_pixel = Pixel.create(test_x, test_y)
+                    ref_pixel = Pixel.create(ref_x, ref_y)
 
                     # Get elevation if not provided
                     if elevation is None:
                         elevation = get_elevation(latitude, longitude)
 
-                    geographic = create_geographic(latitude, longitude, elevation)
+                    geographic = Geographic.create(latitude, longitude, elevation)
 
                     gcp = GCP(
                         id=gcp_id,

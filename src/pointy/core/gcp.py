@@ -64,11 +64,11 @@ class GCP:
     def from_dict(cls, data):
         """Create GCP from dictionary."""
 
-        test_pixel = create_pixel(data['test_pixel']['x'], data['test_pixel']['y'])
-        ref_pixel = create_pixel(data['reference_pixel']['x'], data['reference_pixel']['y'])
+        test_pixel = Pixel.create(data['test_pixel']['x'], data['test_pixel']['y'])
+        ref_pixel = Pixel.create(data['reference_pixel']['x'], data['reference_pixel']['y'])
 
         geo_data = data['geographic']
-        geographic = create_geographic(
+        geographic = Geographic.create(
             geo_data['latitude'],
             geo_data['longitude'],
             geo_data.get('elevation')
@@ -77,7 +77,7 @@ class GCP:
         projected = None
         if data.get('projected'):
             proj_data = data['projected']
-            projected = create_projected(
+            projected = UTM.create(
                 proj_data['easting'],
                 proj_data['northing'],
                 proj_data.get('crs', 'EPSG:3857'),
