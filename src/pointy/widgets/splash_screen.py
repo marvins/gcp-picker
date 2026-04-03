@@ -1,10 +1,31 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    splash_screen.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
+
 """
 Splash Screen - Basic splash screen for application startup
 """
 
+# Standard library imports
+import logging
+
+# Third-party imports
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar, QSplashScreen
-from qtpy.QtCore import Qt, QTimer, QCoreApplication
+from qtpy.QtCore import Qt, QTimer, QCoreApplication, QRect
 from qtpy.QtGui import QFont, QPainter, QPixmap, QColor
+
+# Project imports
 from pointy.resources import resources
 from pointy import __version__
 
@@ -59,22 +80,22 @@ class Splash_Screen(QSplashScreen):
             # Fallback to text only
             text_start_y = 30
 
-        # App title (smaller if logo is present)
+        # App title
         title_font = QFont("Arial", 16, QFont.Bold)
         painter.setFont(title_font)
-        title_rect = self.rect().adjusted(0, text_start_y, 0, -200)  # More space at bottom
+        title_rect = QRect(0, text_start_y, self.width(), 30)  # 30px height for title
         painter.drawText(title_rect, Qt.AlignCenter, "Pointy-McPointface")
 
         # Version
         version_font = QFont("Arial", 12)
         painter.setFont(version_font)
-        version_rect = self.rect().adjusted(0, text_start_y + 25, 0, -170)  # Tighter spacing
+        version_rect = QRect(0, text_start_y + 35, self.width(), 20)  # 20px height for version
         painter.drawText(version_rect, Qt.AlignCenter, f"Version {__version__}")
 
         # Current task
         task_font = QFont("Arial", 9)
         painter.setFont(task_font)
-        task_rect = self.rect().adjusted(0, text_start_y + 60, 0, -80)
+        task_rect = QRect(0, text_start_y + 60, self.width(), 20)  # 20px height for task
         painter.drawText(task_rect, Qt.AlignCenter, self.current_task)
 
         # Progress bar background - moved down to give more space
@@ -99,7 +120,7 @@ class Splash_Screen(QSplashScreen):
         painter.setPen(QColor(255, 255, 255))  # White text for dark background
         painter.setFont(QFont("Arial", 10))
         progress_text = f"{self.progress}%"
-        progress_rect = self.rect().adjusted(0, progress_y + progress_height + 5, 0, -progress_y - progress_height - 25)
+        progress_rect = QRect(0, progress_y + progress_height + 5, self.width(), 15)  # 15px height for percentage
         painter.drawText(progress_rect, Qt.AlignCenter, progress_text)
 
     def update_progress(self, value, task=None):

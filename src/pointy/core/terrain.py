@@ -19,36 +19,51 @@ This module provides elevation data access from multiple sources including SRTM 
 It supports caching and coordinate-based elevation queries.
 """
 
-import os
+#  Python Standard Libraries
 import json
+import logging
+import os
 import pickle
 import tempfile
-from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-import logging
+from pathlib import Path
 
+#  Third-Party Libraries
 import numpy as np
 import rasterio
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Project Libraries
+from pointy.core.coordinate import Transformer, Geographic, Coordinate
 
 
 @dataclass
-class ElevationPoint:
+class Elevation_Point:
     """Elevation data point."""
-    latitude: float
-    longitude: float
-    elevation: float
+    coord: Coordinate
     source: str
     accuracy: float | None = None
 
+    def coordinate(self) -> Coordinate:
+        """Get the coordinate object."""
+        return self.coord
+
+    def geographic(self) -> Geographic:
+        """Get coordinate as Geographic type (auto-converts if needed)."""
+        if isinstance(self.coord, Geographic):
+            return self.coord
+
+        # Use transformer to convert to Geographic
+        transformer = Transformer()
+        return transformer.to_geographic(self.coord)
+
     def __str__(self) -> str:
         """String representation."""
-        return f"Elevation: {self.elevation:.1f}m at ({self.latitude:.6f}, {self.longitude:.6f}) [{self.source}]"
+        return f"Elevation: {self.coord.altitude_m or 0.0:.1f}m at {self.coord} [{self.source}]"
 
 
-class ElevationSource:
+class Elevation_Source:
     """Base class for elevation data sources."""
 
     def __init__(self, name: str):
@@ -63,7 +78,7 @@ class ElevationSource:
         return [self.get_elevation(lat, lon) for lat, lon in points]
 
 
-class SRTMElevationSource(ElevationSource):
+class SRTM_Elevation_Source(Elevation_Source):
     """SRTM (Shuttle Radar Topography Mission) elevation source."""
 
     def __init__(self):
@@ -152,7 +167,7 @@ class SRTMElevationSource(ElevationSource):
         return self.cache_dir / filename
 
 
-class AWSElevationSource(ElevationSource):
+class AWS_Elevation_Source(Elevation_Source):
     """AWS Terrain Tiles elevation source."""
 
     def __init__(self):
@@ -212,7 +227,7 @@ class AWSElevationSource(ElevationSource):
         return x, y
 
 
-class LocalDEMElevationSource(ElevationSource):
+class Local_DEM_Elevation_Source(Elevation_Source):
     """Local DEM file elevation source."""
 
     def __init__(self, dem_file: str | Path):
@@ -285,30 +300,30 @@ class LocalDEMElevationSource(ElevationSource):
 class Manager:
     """Terrain elevation manager with multiple data sources."""
 
-    def __init__(self, cache_enabled: bool = True):
+    def __init__(self, sources: list[Elevation_Source], cache_enabled: bool = True):
         """Initialize terrain manager."""
+        if not sources:
+            raise ValueError("At least one elevation source must be provided")
+
         self.cache_enabled = cache_enabled
         self.cache_file = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "elevation_cache.pkl"
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Initialize elevation sources
-        self.sources: list[ElevationSource] = [
-            SRTMElevationSource(),
-            AWSElevationSource(),
-        ]
+        self.sources: list[Elevation_Source] = sources
 
         # Load cache
-        self.elevation_cache: dict[str, ElevationPoint] = {}
+        self.elevation_cache: dict[str, Elevation_Point] = {}
         if cache_enabled and self.cache_file.exists():
             self._load_cache()
 
         # Coordinate transformer
-        self.coord_transformer = Coordinate_Transformer()
+        self.coord_transformer = Transformer()
 
     def add_local_dem(self, dem_file: str | Path):
         """Add a local DEM file as an elevation source."""
         try:
-            local_source = LocalDEMElevationSource(dem_file)
+            local_source = Local_DEM_Elevation_Source(dem_file)
             self.sources.insert(0, local_source)  # Prioritize local DEM
         except Exception as e:
             logging.warning(f"Could not add local DEM {dem_file}: {e}")
@@ -328,10 +343,8 @@ class Manager:
                 if elevation is not None:
                     # Cache the result
                     if self.cache_enabled:
-                        point = ElevationPoint(
-                            latitude=latitude,
-                            longitude=longitude,
-                            elevation=elevation,
+                        point = Elevation_Point(
+                            coord=Geographic(latitude, longitude, elevation),
                             source=source.name
                         )
                         self.elevation_cache[cache_key] = point
@@ -392,10 +405,8 @@ class Manager:
                                 # Cache the result
                                 if self.cache_enabled:
                                     cache_key = f"{lat:.6f},{lon:.6f}"
-                                    point = ElevationPoint(
-                                        latitude=lat,
-                                        longitude=lon,
-                                        elevation=elevation,
+                                    point = Elevation_Point(
+                                        coord=Geographic(lat, lon, elevation),
                                         source=source.name
                                     )
                                     self.elevation_cache[cache_key] = point
@@ -409,7 +420,7 @@ class Manager:
 
         return cached_results
 
-    def get_elevation_point(self, latitude: float, longitude: float) -> ElevationPoint | None:
+    def get_elevation_point(self, latitude: float, longitude: float) -> Elevation_Point | None:
         """Get detailed elevation point with metadata."""
         cache_key = f"{latitude:.6f},{longitude:.6f}"
 
@@ -462,8 +473,23 @@ def get_terrain_manager() -> Manager:
     """Get the global terrain manager instance."""
     global _terrain_manager
     if _terrain_manager is None:
-        _terrain_manager = Manager()
+        _terrain_manager = Manager.create_default()
     return _terrain_manager
+
+
+def create_terrain_manager(sources: list[Elevation_Source], cache_enabled: bool = True) -> Manager:
+    """Create a new terrain manager with specified sources."""
+    return Manager(sources, cache_enabled)
+
+
+def create_srtm_manager(cache_enabled: bool = True) -> Manager:
+    """Create a terrain manager with only SRTM source."""
+    return Manager.create_srtm_only(cache_enabled)
+
+
+def create_aws_manager(cache_enabled: bool = True) -> Manager:
+    """Create a terrain manager with only AWS source."""
+    return Manager.create_aws_only(cache_enabled)
 
 
 def elevation(latitude: float, longitude: float) -> float | None:

@@ -20,20 +20,20 @@ import pytest
 from unittest.mock import Mock, patch
 from pointy.core.terrain import (
     Manager,
-    ElevationPoint,
-    SRTMElevationSource,
-    AWSElevationSource,
+    Elevation_Point,
+    SRTM_Elevation_Source,
+    AWS_Elevation_Source,
     elevation,
     get_terrain_manager
 )
 
 
 class Test_Elevation_Point:
-    """Test ElevationPoint dataclass."""
+    """Test Elevation_Point dataclass."""
 
     def test_elevation_point_creation(self):
         """Test creating elevation point."""
-        point = ElevationPoint(40.7, -74.0, 10.5, "SRTM", 1.0)
+        point = Elevation_Point(40.7, -74.0, 10.5, "SRTM", 1.0)
 
         assert point.latitude == 40.7
         assert point.longitude == -74.0
@@ -43,7 +43,7 @@ class Test_Elevation_Point:
 
     def test_elevation_point_string(self):
         """Test string representation."""
-        point = ElevationPoint(40.7, -74.0, 10.5, "SRTM")
+        point = Elevation_Point(40.7, -74.0, 10.5, "SRTM")
         str_repr = str(point)
 
         assert "10.5m" in str_repr
@@ -151,8 +151,7 @@ class Test_Terrain_Manager:
         manager = Manager()
 
         # Add a point to cache
-        from gcp_picker.app.core.terrain import ElevationPoint
-        point = ElevationPoint(40.7, -74.0, 10.5, "Test")
+        point = Elevation_Point(40.7, -74.0, 10.5, "Test")
         manager.elevation_cache["40.700000,-74.000000"] = point
 
         # Test cache stats

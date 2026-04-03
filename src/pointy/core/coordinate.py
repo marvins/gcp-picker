@@ -19,20 +19,27 @@ This module defines coordinate types and transformations used throughout the Poi
 It supports various coordinate systems and provides utilities for coordinate conversion.
 """
 
+# Standard Library Imports
 from dataclasses import dataclass
-from typing import Optional
+from typing import Union
 from enum import Enum
+import math
 
+# Third-Party Imports
 import numpy as np
 from pyproj import Transformer, CRS
 
 
+# Union type for any coordinate type
+Coordinate = Union['Geographic', 'UTM', 'ECEF', 'Pixel']
+
+
 class Coordinate_System(Enum):
     """Supported coordinate systems."""
-    WGS84 = "EPSG:4326"           # Geographic coordinates (lat/lon)
-    WEB_MERCATOR = "EPSG:3857"     # Web Mercator (used by many web maps)
-    UTM_NORTH = "EPSG:32600"       # UTM Northern hemisphere (base)
-    UTM_SOUTH = "EPSG:32700"       # UTM Southern hemisphere (base)
+    WGS84           = "EPSG:4326"           # Geographic coordinates (lat/lon)
+    WEB_MERCATOR    = "EPSG:3857"     # Web Mercator (used by many web maps)
+    UTM_NORTH       = "EPSG:32600"       # UTM Northern hemisphere (base)
+    UTM_SOUTH       = "EPSG:32700"       # UTM Southern hemisphere (base)
     LOCAL_CARTESIAN = "local"      # Local coordinate system
 
 
@@ -41,7 +48,12 @@ class Geographic:
     """Geographic coordinate (latitude, longitude, elevation)."""
     latitude_deg: float
     longitude_deg: float
-    altitude_m: Optional[float] = None
+    altitude_m: float | None = None
+
+    @staticmethod
+    def create(lat_deg: float, lon_deg: float, alt_m: float | None = None) -> 'Geographic':
+        """Create a geographic coordinate."""
+        return Geographic(latitude_deg=lat_deg, longitude_deg=lon_deg, altitude_m=alt_m)
 
     def __post_init__(self):
         """Validate coordinate ranges."""
@@ -65,18 +77,28 @@ class Geographic:
         return f"({self.latitude_deg:.6f}, {self.longitude_deg:.6f})"
 
     @property
-    def latitude(self) -> float:
+    def lat_deg(self) -> float:
         """Get latitude in degrees (backward compatibility)."""
         return self.latitude_deg
 
     @property
-    def longitude(self) -> float:
+    def lat_rad(self) -> float:
+        """Get latitude in radians."""
+        return math.radians(self.latitude_deg)
+
+    @property
+    def lon_deg(self) -> float:
         """Get longitude in degrees (backward compatibility)."""
         return self.longitude_deg
 
     @property
-    def elevation(self) -> Optional[float]:
-        """Get elevation in meters (backward compatibility)."""
+    def lon_rad(self) -> float:
+        """Get longitude in radians."""
+        return math.radians(self.longitude_deg)
+
+    @property
+    def elevation(self) -> float | None:
+        """Get elevation in meters."""
         return self.altitude_m
 
 
@@ -85,8 +107,13 @@ class UTM:
     """UTM coordinate (easting, northing, elevation)."""
     easting_m: float
     northing_m: float
-    altitude_m: Optional[float] = None
+    altitude_m: float | None = None
     crs: str = "EPSG:4326"  # Default to WGS84, should be set to appropriate UTM zone
+
+    @staticmethod
+    def create(easting_m: float, northing_m: float, crs: str = "EPSG:4326", alt_m: float | None = None) -> 'UTM':
+        """Create a UTM coordinate."""
+        return UTM(easting_m=easting_m, northing_m=northing_m, crs=crs, altitude_m=alt_m)
 
     def to_tuple(self) -> tuple[float, float]:
         """Convert to (easting, northing) tuple."""
@@ -103,19 +130,75 @@ class UTM:
         return f"({self.easting_m:.2f}, {self.northing_m:.2f}) [{self.crs}]"
 
     @property
-    def easting(self) -> float:
-        """Get easting in meters (backward compatibility)."""
+    def easting_m(self) -> float:
+        """Get easting in meters."""
         return self.easting_m
 
     @property
-    def northing(self) -> float:
-        """Get northing in meters (backward compatibility)."""
+    def northing_m(self) -> float:
+        """Get northing in meters."""
         return self.northing_m
 
     @property
-    def elevation(self) -> Optional[float]:
-        """Get elevation in meters (backward compatibility)."""
+    def elevation_m(self) -> float | None:
+        """Get elevation in meters."""
         return self.altitude_m
+
+
+@dataclass
+class ECEF:
+    """ECEF (Earth-Centered, Earth-Fixed) coordinate (X, Y, Z)."""
+    xyz: np.ndarray  # Shape (3,) for [X, Y, Z] in meters
+
+    def __post_init__(self):
+        """Validate the numpy array."""
+        if not isinstance(self.xyz, np.ndarray):
+            self.xyz = np.array(self.xyz, dtype=float)
+
+        if self.xyz.shape != (3,):
+            raise ValueError(f"ECEF coordinates must have shape (3,), got {self.xyz.shape}")
+
+    @staticmethod
+    def create(x_m: float, y_m: float, z_m: float) -> 'ECEF':
+        """Create an ECEF coordinate from individual components."""
+        return ECEF(xyz=np.array([x_m, y_m, z_m], dtype=float))
+
+    @staticmethod
+    def from_array(xyz: np.ndarray | list[float]) -> 'ECEF':
+        """Create an ECEF coordinate from array or list."""
+        return ECEF(xyz=np.array(xyz, dtype=float))
+
+    @property
+    def x_m(self) -> float:
+        """Get X coordinate in meters."""
+        return float(self.xyz[0])
+
+    @property
+    def y_m(self) -> float:
+        """Get Y coordinate in meters."""
+        return float(self.xyz[1])
+
+    @property
+    def z_m(self) -> float:
+        """Get Z coordinate in meters."""
+        return float(self.xyz[2])
+
+    def to_tuple(self) -> tuple[float, float, float]:
+        """Convert to (X, Y, Z) tuple."""
+        return (float(self.xyz[0]), float(self.xyz[1]), float(self.xyz[2]))
+
+    def to_array(self) -> np.ndarray:
+        """Get coordinate as numpy array."""
+        return self.xyz.copy()
+
+    def __str__(self) -> str:
+        """String representation."""
+        return f"({self.x_m:.2f}, {self.y_m:.2f}, {self.z_m:.2f})"
+
+    @property
+    def magnitude(self) -> float:
+        """Get magnitude of the position vector."""
+        return float(np.linalg.norm(self.xyz))
 
 
 @dataclass
@@ -123,6 +206,11 @@ class Pixel:
     """Pixel/image coordinate."""
     x_px: float
     y_px: float
+
+    @staticmethod
+    def create(x_px: float, y_px: float) -> 'Pixel':
+        """Create a pixel coordinate."""
+        return Pixel(x_px=x_px, y_px=y_px)
 
     def to_tuple(self) -> tuple[float, float]:
         """Convert to (x, y) tuple."""
@@ -147,35 +235,20 @@ class Pixel:
         return self.y_px
 
 
-@dataclass
-class GCPPair:
-    """Ground Control Point pair with coordinates in different systems."""
-    id: int
-    test_pixel: Pixel
-    reference_pixel: Pixel
-    geographic: Geographic
-    projected: Optional[UTM] = None
-    error: Optional[float] = None
-
-    def __str__(self) -> str:
-        """String representation."""
-        return f"GCP {self.id}: Test{self.test_pixel} → Geo{self.geographic}"
-
-
-class Coordinate_Transformer:
+class Transformer:
     """Handles coordinate transformations between different coordinate systems."""
 
     def __init__(self):
         """Initialize transformer with common transformations."""
-        self._transformers: dict[tuple[str, str], Transformer] = {}
+        self._transformers: dict[tuple[str, str], pyproj.Transformer] = {}
 
-    def _get_transformer(self, from_crs: str, to_crs: str) -> Transformer:
+    def _get_transformer(self, from_crs: str, to_crs: str) -> pyproj.Transformer:
         """Get or create a transformer for the given CRS pair."""
         key = (from_crs, to_crs)
 
         if key not in self._transformers:
             try:
-                self._transformers[key] = Transformer.from_crs(
+                self._transformers[key] = pyproj.Transformer.from_crs(
                     CRS(from_crs), CRS(to_crs), always_xy=True
                 )
             except Exception as e:
@@ -239,7 +312,7 @@ class Coordinate_Transformer:
 
     def to_utm(self, geo: Geographic) -> UTM:
         """Convert geographic coordinates to UTM."""
-        utm_crs = self.get_utm_zone(geo.longitude, geo.latitude)
+        utm_crs = self.get_utm_zone(geo.longitude_deg, geo.latitude_deg)
         return self.geographic_to_projected(geo, utm_crs)
 
     def calculate_distance(
@@ -280,10 +353,10 @@ class Coordinate_Transformer:
     ) -> float:
         """Calculate bearing from one geographic coordinate to another."""
         # Convert to radians
-        lat1 = np.radians(from_coord.latitude)
-        lon1 = np.radians(from_coord.longitude)
-        lat2 = np.radians(to_coord.latitude)
-        lon2 = np.radians(to_coord.longitude)
+        lat1 = from_coord.lat_rad()
+        lon1 = from_coord.lon_rad()
+        lat2 = to_coord.lat_rad()
+        lon2 = to_coord.lon_rad()
 
         # Calculate bearing
         dlon = lon2 - lon1
@@ -299,24 +372,3 @@ class Coordinate_Transformer:
         bearing = (bearing + 360) % 360
 
         return bearing
-
-
-# Utility functions
-def create_geographic(lat_deg: float, lon_deg: float, alt_m: Optional[float] = None) -> Geographic:
-    """Create a geographic coordinate."""
-    return Geographic(latitude_deg=lat_deg, longitude_deg=lon_deg, altitude_m=alt_m)
-
-
-def create_projected(
-    easting_m: float,
-    northing_m: float,
-    crs: str = "EPSG:4326",  # Default to WGS84, should be set to appropriate projected CRS
-    alt_m: Optional[float] = None
-) -> UTM:
-    """Create a projected coordinate."""
-    return UTM(easting_m=easting_m, northing_m=northing_m, crs=crs, altitude_m=alt_m)
-
-
-def create_pixel(x_px: float, y_px: float) -> Pixel:
-    """Create a pixel coordinate."""
-    return Pixel(x_px=x_px, y_px=y_px)

@@ -18,7 +18,7 @@ Unit tests for coordinate system functionality.
 
 import pytest
 from pointy.core.coordinate import (
-    Coordinate_Transformer,
+    Transformer,
     create_geographic,
     create_pixel
 )
@@ -30,9 +30,9 @@ class Test_Geographic_Coordinate:
     def test_valid_coordinates(self):
         """Test creating valid geographic coordinates."""
         geo = create_geographic(40.7128, -74.0060, 10.5)
-        assert geo.latitude == 40.7128
-        assert geo.longitude == -74.0060
-        assert geo.elevation == 10.5
+        assert geo.latitude_deg == 40.7128
+        assert geo.longitude_deg == -74.0060
+        assert geo.altitude_m == 10.5
 
     def test_invalid_latitude(self):
         """Test invalid latitude values."""
@@ -81,12 +81,12 @@ class Test_Pixel_Coordinate:
         assert pixel.to_int_tuple() == (257, 128)
 
 
-class Test_Coordinate_Transformer:
+class Test_Transformer:
     """Test coordinate transformation functionality."""
 
     def test_utm_zone_calculation(self):
         """Test UTM zone calculation."""
-        transformer = Coordinate_Transformer()
+        transformer = Transformer()
 
         # Test various locations
         assert transformer.get_utm_zone(0.0, 0.0) == "EPSG:32631"  # Greenwich
@@ -95,7 +95,7 @@ class Test_Coordinate_Transformer:
 
     def test_geographic_to_web_mercator(self):
         """Test conversion to Web Mercator."""
-        transformer = Coordinate_Transformer()
+        transformer = Transformer()
         geo = create_geographic(40.7, -74.0)
 
         proj = transformer.geographic_to_projected(geo, "EPSG:3857")
@@ -105,7 +105,7 @@ class Test_Coordinate_Transformer:
 
     def test_distance_calculation(self):
         """Test distance calculation between coordinates."""
-        transformer = Coordinate_Transformer()
+        transformer = Transformer()
 
         # Test distance between two points
         geo1 = create_geographic(40.7, -74.0)
@@ -117,7 +117,7 @@ class Test_Coordinate_Transformer:
 
     def test_bearing_calculation(self):
         """Test bearing calculation."""
-        transformer = Coordinate_Transformer()
+        transformer = Transformer()
 
         geo1 = create_geographic(40.7, -74.0)
         geo2 = create_geographic(40.8, -74.0)  # Due north

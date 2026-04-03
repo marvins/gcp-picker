@@ -26,17 +26,25 @@ from ._version import (
 
 # Core functionality (no GUI dependencies)
 from .core.coordinate import (
-    Coordinate_Transformer,
-    create_geographic,
-    create_pixel,
-    create_projected,
+    Transformer,
+    Geographic,
+    Coordinate,
+    UTM,
+    ECEF,
+    Pixel,
 )
 
 from .core.terrain import (
     Manager,
-    ElevationPoint,
+    Elevation_Point,
+    Elevation_Source,
+    SRTM_Elevation_Source,
+    AWS_Elevation_Source,
     elevation,
     get_terrain_manager,
+    create_terrain_manager,
+    create_srtm_manager,
+    create_aws_manager,
 )
 
 def get_main_window():
@@ -46,14 +54,22 @@ def get_main_window():
 
 __all__ = [
     # Core functionality
-    "Coordinate_Transformer",
-    "create_geographic",
-    "create_pixel",
-    "create_projected",
+    "Transformer",
+    "Geographic",
+    "Coordinate",
+    "UTM",
+    "ECEF",
+    "Pixel",
     "Manager",
-    "ElevationPoint",
+    "Elevation_Point",
+    "Elevation_Source",
+    "SRTM_Elevation_Source",
+    "AWS_Elevation_Source",
     "elevation",
     "get_terrain_manager",
+    "create_terrain_manager",
+    "create_srtm_manager",
+    "create_aws_manager",
     # GUI functionality (deferred)
     "get_main_window",
     # Version info
