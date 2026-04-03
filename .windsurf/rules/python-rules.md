@@ -45,7 +45,7 @@ The project follows Rust-style naming conventions adapted for Python:
 import os
 import sys
 
-# Third-party Libraries
+# Third-Party Libraries
 import numpy as np
 from qtpy.QtWidgets import QApplication, QMainWindow
 

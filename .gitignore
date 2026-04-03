@@ -2,3 +2,29 @@
 __pycache__
 *.log
 _version.py
+
+# Environment variables and API keys
+.env
+.env.local
+.env.production
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Cache directories
+.pytest_cache/
+.ruff_cache/
+

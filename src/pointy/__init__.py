@@ -41,13 +41,13 @@ from .core.terrain import (
     Manager,
     Elevation_Point,
     Elevation_Source,
-    SRTM_Elevation_Source,
-    AWS_Elevation_Source,
+    GeoTIFF_Elevation_Source,
+    Terrain_Catalog,
+    Interpolation_Method,
     elevation,
     get_terrain_manager,
     create_terrain_manager,
-    create_srtm_manager,
-    create_aws_manager,
+    create_catalog_manager,
 )
 
 def get_main_window():
@@ -70,13 +70,13 @@ __all__ = [
     "Manager",
     "Elevation_Point",
     "Elevation_Source",
-    "SRTM_Elevation_Source",
-    "AWS_Elevation_Source",
+    "GeoTIFF_Elevation_Source",
+    "Terrain_Catalog",
+    "Interpolation_Method",
     "elevation",
     "get_terrain_manager",
     "create_terrain_manager",
-    "create_srtm_manager",
-    "create_aws_manager",
+    "create_catalog_manager",
     # GUI functionality (deferred)
     "get_main_window",
     # Version info

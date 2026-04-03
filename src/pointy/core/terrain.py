@@ -15,27 +15,36 @@
 """
 Terrain Elevation Module
 
-This module provides elevation data access from multiple sources including SRTM and AWS Terrain Tiles.
-It supports caching and coordinate-based elevation queries.
+This module provides elevation data access from local GeoTIFF files and AWS Terrain Tiles.
+It supports a catalog-based approach for managing multiple elevation data sources with caching.
 """
 
-#  Python Standard Libraries
+# Python Standard Libraries
 import json
 import logging
 import os
 import pickle
+import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
+from typing import Any
 
-#  Third-Party Libraries
+# Third-Party Libraries
 import numpy as np
 import rasterio
-import requests
 
 # Project Libraries
-from pointy.core.coordinate import Transformer, Geographic, Coordinate, UTM, UPS, Web_Mercator, ECEF
+from pointy.core.coordinate import Transformer, Geographic, Coordinate, Coordinate_Type, UTM, UPS, Web_Mercator, ECEF
+
+
+class Interpolation_Method(Enum):
+    """Elevation interpolation methods."""
+    NEAREST = "nearest"
+    BILINEAR = "bilinear"
+    CUBIC = "cubic"
 
 
 @dataclass
@@ -44,6 +53,7 @@ class Elevation_Point:
     coord: Geographic
     source: str
     accuracy: float | None = None
+    _transformer: Transformer = field(default_factory=Transformer, init=False)
 
     def __post_init__(self):
         """Validate coordinate type."""
@@ -60,23 +70,19 @@ class Elevation_Point:
 
     def to_utm(self) -> UTM:
         """Convert to UTM coordinate."""
-        transformer = Transformer()
-        return transformer.geo_to_utm(self.coord)
+        return self._transformer.geo_to_utm(self.coord)
 
     def to_ups(self) -> UPS:
         """Convert to UPS coordinate."""
-        transformer = Transformer()
-        return transformer.geo_to_ups(self.coord)
+        return self._transformer.geo_to_ups(self.coord)
 
     def to_web_mercator(self) -> Web_Mercator:
         """Convert to Web Mercator coordinate."""
-        transformer = Transformer()
-        return transformer.geo_to_web_mercator(self.coord)
+        return self._transformer.geo_to_web_mercator(self.coord)
 
     def to_ecef(self) -> ECEF:
         """Convert to ECEF coordinate."""
-        transformer = Transformer()
-        return transformer.geo_to_ecef(self.coord)
+        return self._transformer.geo_to_ecef(self.coord)
 
     @classmethod
     def create(cls, latitude: float, longitude: float, elevation: float, source: str, accuracy: float | None = None) -> 'Elevation_Point':
@@ -104,159 +110,6 @@ class Elevation_Source:
         return [self.get_elevation(coord) for coord in coords]
 
 
-class SRTM_Elevation_Source(Elevation_Source):
-    """SRTM (Shuttle Radar Topography Mission) elevation source."""
-
-    def __init__(self):
-        super().__init__("SRTM 30m")
-        self.base_url = "https://earthengine.googleapis.com/dataset/export/USGS/SRTMGL1_003"
-        self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "srtm_cache"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-    def get_elevation(self, coord: Geographic) -> float | None:
-        """Get elevation from SRTM using Earth Engine API."""
-        lat, lon = coord.latitude_deg, coord.longitude_deg
-
-        try:
-            # Check cache first
-            cache_file = self._get_cache_file(lat, lon)
-            if cache_file.exists():
-                with open(cache_file, 'r') as f:
-                    data = json.load(f)
-                    return data.get('elevation')
-
-            # Query Earth Engine API
-            url = "https://maps.googleapis.com/maps/api/elevation/json"
-            params = {
-                'locations': f'{lat},{lon}',
-                'key': os.environ.get('GOOGLE_ELEVATION_API_KEY', '')
-            }
-
-            if not params['key']:
-                # Fallback to OpenTopography API
-                return self._get_opentopography_elevation(lat, lon)
-
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
-
-            if data['status'] == 'OK' and data['results']:
-                elevation = data['results'][0]['elevation']
-
-                # Cache the result
-                cache_data = {
-                    'latitude': lat,
-                    'longitude': lon,
-                    'elevation': elevation,
-                    'source': 'google_elevation'
-                }
-
-                with open(cache_file, 'w') as f:
-                    json.dump(cache_data, f)
-
-                return elevation
-
-        except (requests.RequestException, json.JSONDecodeError, KeyError, IOError):
-            pass
-
-        return None
-
-    def _get_opentopography_elevation(self, lat: float, lon: float) -> float | None:
-        """Fallback to OpenTopography API."""
-        try:
-            url = "https://portal.opentopography.org/API/otds"
-            params = {
-                'dataset': 'SRTMGL1',
-                'location': f'{lon},{lat}',
-                'outputFormat': 'json'
-            }
-
-            response = requests.get(url, params=params, timeout=15)
-            response.raise_for_status()
-
-            data = response.json()
-
-            if 'data' in data and len(data['data']) > 0:
-                return float(data['data'][0]['elevation'])
-
-        except (requests.RequestException, json.JSONDecodeError, KeyError, ValueError):
-            pass
-
-        return None
-
-    def _get_cache_file(self, lat: float, lon: float) -> Path:
-        """Get cache file path for coordinates."""
-        # Round to 4 decimal places (~10m precision)
-        lat_rounded = round(lat, 4)
-        lon_rounded = round(lon, 4)
-
-        filename = f"elev_{lat_rounded}_{lon_rounded}.json"
-        return self.cache_dir / filename
-
-
-class AWS_Elevation_Source(Elevation_Source):
-    """AWS Terrain Tiles elevation source."""
-
-    def __init__(self):
-        super().__init__("AWS Terrain Tiles")
-        self.base_url = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
-        self.cache_dir = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "aws_cache"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
-    def get_elevation(self, coord: Geographic) -> float | None:
-        """Get elevation from AWS Terrain Tiles."""
-        lat, lon = coord.latitude_deg, coord.longitude_deg
-
-        try:
-            # Calculate tile coordinates
-            zoom = 12  # Use zoom level 12 for ~30m resolution
-
-            x, y = self._lat_lon_to_tile(lat, lon, zoom)
-
-            # Check cache
-            cache_file = self.cache_dir / f"tile_{zoom}_{x}_{y}.png"
-
-            if not cache_file.exists():
-                # Download tile
-                tile_url = f"{self.base_url}/{zoom}/{x}/{y}.png"
-                response = requests.get(tile_url, timeout=30)
-                response.raise_for_status()
-
-                with open(cache_file, 'wb') as f:
-                    f.write(response.content)
-
-            # Extract elevation from tile
-            from PIL import Image
-
-            tile_image = Image.open(cache_file)
-
-            # Calculate pixel position within tile
-            pixel_x = int((lon + 180) * (256 / 360) * (2 ** zoom)) % 256
-            pixel_y = int((1 - np.log(np.tan(np.radians(lat)) + 1 / np.cos(np.radians(lat))) / np.pi) *
-                         (256 / 2) * (2 ** zoom)) % 256
-
-            # Get RGB values
-            r, g, b = tile_image.getpixel((pixel_x, pixel_y))
-
-            # Convert RGB to elevation (terrarium format)
-            elevation = (r * 256 + g + b / 256) - 32768
-
-            return elevation
-
-        except (requests.RequestException, IOError, OSError, ValueError):
-            pass
-
-        return None
-
-    def _lat_lon_to_tile(self, lat: float, lon: float, zoom: int) -> tuple[int, int]:
-        """Convert lat/lon to tile coordinates."""
-        x = int((lon + 180) / 360 * (2 ** zoom))
-        y = int((1 - np.log(np.tan(np.radians(lat)) + 1 / np.cos(np.radians(lat))) / np.pi) / 2 * (2 ** zoom))
-
-        return x, y
-
-
 class Local_DEM_Elevation_Source(Elevation_Source):
     """Local DEM file elevation source."""
 
@@ -264,6 +117,7 @@ class Local_DEM_Elevation_Source(Elevation_Source):
         super().__init__(f"Local DEM ({Path(dem_file).name})")
         self.dem_file = Path(dem_file)
         self.dataset = None
+        self.logger = logging.getLogger(__name__)
         self._load_dataset()
 
     def _load_dataset(self):
@@ -284,11 +138,11 @@ class Local_DEM_Elevation_Source(Elevation_Source):
             else:
                 self.epsg_code = None
 
-            logger.info(f"Loaded DEM: {self.dem_file}")
-            logger.info(f"  Size: {self.dataset.width}x{self.dataset.height}")
-            logger.info(f"  Bounds: {self.bounds}")
+            self.logger.info(f"Loaded DEM: {self.dem_file}")
+            self.logger.info(f"  Size: {self.dataset.width}x{self.dataset.height}")
+            self.logger.info(f"  Bounds: {self.bounds}")
             if self.epsg_code:
-                logger.info(f"  EPSG: {self.epsg_code}")
+                self.logger.info(f"  EPSG: {self.epsg_code}")
 
         except ImportError as e:
             raise ImportError(f"rasterio is required for terrain loading: {e}")
@@ -327,20 +181,252 @@ class Local_DEM_Elevation_Source(Elevation_Source):
         return None
 
 
-class Manager:
-    """Terrain elevation manager with multiple data sources."""
+class GeoTIFF_Elevation_Source(Elevation_Source):
+    """GeoTIFF file elevation source with lazy loading and caching."""
 
-    def __init__(self, sources: list[Elevation_Source], cache_enabled: bool = True):
-        """Initialize terrain manager."""
+    def __init__(self, file_path: str | Path):
+        super().__init__(f"GeoTIFF ({Path(file_path).name})")
+        self.file_path = Path(file_path)
+        self.dataset = None
+        self.bounds = None
+        self.transform = None
+        self.crs = None
+        self.epsg_code = None
+        self.interpolation = Interpolation_Method.BILINEAR  # Default interpolation
+        self.logger = logging.getLogger(__name__)
+        self._loaded = False
+
+    def _load_dataset(self):
+        """Load GeoTIFF dataset using rasterio."""
+        if self._loaded:
+            return
+
+        try:
+            self.dataset = rasterio.open(str(self.file_path))
+            if self.dataset is None:
+                raise RuntimeError(f"Could not open GeoTIFF file: {self.file_path}")
+
+            # Get basic info
+            self.bounds = self.dataset.bounds
+            self.transform = self.dataset.transform
+
+            # Get CRS info
+            self.crs = self.dataset.crs
+            if self.crs:
+                self.epsg_code = self.crs.to_epsg()
+            else:
+                self.epsg_code = None
+
+            self._loaded = True
+            self.logger.debug(f"Loaded GeoTIFF: {self.file_path}")
+
+        except ImportError as e:
+            raise ImportError(f"rasterio is required for GeoTIFF loading: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load GeoTIFF {self.file_path}: {e}")
+
+    def contains(self, coord: Geographic) -> bool:
+        """Check if this GeoTIFF contains the given coordinate."""
+        if not self._loaded:
+            self._load_dataset()
+
+        if self.bounds is None:
+            return False
+
+        # Check if coordinate is within bounds (assuming geographic coordinates)
+        # This is simplified - proper implementation would handle coordinate transformations
+        return (self.bounds.left <= coord.longitude_deg <= self.bounds.right and
+                self.bounds.bottom <= coord.latitude_deg <= self.bounds.top)
+
+    def get_elevation(self, coord: Geographic) -> float | None:
+        """Get elevation at coordinate using rasterio interpolation.
+
+        Args:
+            coord: Geographic coordinate
+
+        Returns:
+            Elevation in meters or None if no data
+        """
+        if not self._loaded:
+            self._load_dataset()
+
+        if self.dataset is None or self.bounds is None:
+            return None
+
+        # Check if coordinate is within bounds (assuming geographic coordinates)
+        if not self.contains(coord):
+            return None
+
+        try:
+            # Convert geographic to pixel coordinates
+            # This is simplified - proper implementation would handle coordinate transformations
+            col, row = self._geo_to_pixel(coord)
+
+            # Get elevation using specified interpolation method
+            if self.interpolation == Interpolation_Method.NEAREST:
+                elevation = self.dataset.read(1, window=((row, row+1), (col, col+1)))[0, 0]
+            elif self.interpolation == Interpolation_Method.BILINEAR:
+                elevation = self._bilinear_interpolation(col, row)
+            elif self.interpolation == Interpolation_Method.CUBIC:
+                elevation = self._cubic_interpolation(col, row)
+            else:
+                raise ValueError(f"Unsupported interpolation method: {self.interpolation}")
+
+            return float(elevation) if elevation != self.dataset.nodata else None
+
+        except Exception as e:
+            self.logger.error(f"Error reading elevation: {e}")
+            return None
+
+    def _geo_to_pixel(self, coord: Geographic) -> tuple[int, int]:
+        """Convert geographic coordinates to pixel coordinates."""
+        # This is simplified - proper implementation would handle coordinate transformations
+        # For now, assume the dataset is in geographic coordinates
+        transform = self.dataset.transform
+        col, row = ~transform * (coord.longitude_deg, coord.latitude_deg)
+        return int(col), int(row)
+
+    def _bilinear_interpolation(self, col: float, row: float) -> float:
+        """Perform bilinear interpolation."""
+        # Get the 4 surrounding pixels
+        col0, row0 = int(col), int(row)
+        col1, row1 = col0 + 1, row0 + 1
+
+        # Read the 2x2 window
+        window = ((row0, row1 + 1), (col0, col1 + 1))
+        data = self.dataset.read(1, window=window)
+
+        if data.shape != (2, 2) or self.dataset.nodata in data:
+            # Fall back to nearest neighbor
+            return self.dataset.read(1, window=((row0, row0 + 1), (col0, col0 + 1)))[0, 0]
+
+        # Bilinear interpolation
+        fx, fy = col - col0, row - row0
+        elevation = (
+            data[0, 0] * (1 - fx) * (1 - fy) +
+            data[0, 1] * fx * (1 - fy) +
+            data[1, 0] * (1 - fx) * fy +
+            data[1, 1] * fx * fy
+        )
+
+        return elevation
+
+    def _cubic_interpolation(self, col: float, row: float) -> float:
+        """Perform cubic interpolation (simplified)."""
+        # For now, fall back to bilinear
+        return self._bilinear_interpolation(col, row)
+
+
+class Terrain_Catalog(Elevation_Source):
+    """Catalog for managing local GeoTIFF elevation data sources."""
+
+    def __init__(self, catalog_root: str | Path | None = None):
+        """Initialize terrain catalog.
+
+        Args:
+            catalog_root: Root directory containing GeoTIFF files. If None, uses TERRAIN_CATALOG_ROOT env var.
+        """
+        super().__init__("Terrain Catalog")
+
+        if catalog_root is None:
+            catalog_root = os.environ.get('TERRAIN_CATALOG_ROOT')
+            if catalog_root is None:
+                raise ValueError("catalog_root must be provided or TERRAIN_CATALOG_ROOT environment variable must be set")
+
+        self.catalog_root = Path(catalog_root)
+        self.sources = []
+        self.max_memory_mb = 500  # Maximum memory for cached tiles
+        self.logger = logging.getLogger(__name__)
+
+        # Discover GeoTIFF files
+        self._discover_sources()
+
+    def _discover_sources(self):
+        """Discover all GeoTIFF files in the catalog directory."""
+        if not self.catalog_root.exists():
+            self.logger.warning(f"Catalog directory does not exist: {self.catalog_root}")
+            return
+
+        # Look for .tif files recursively
+        for tif_file in self.catalog_root.rglob("*.tif"):
+            try:
+                source = GeoTIFF_Elevation_Source(tif_file)
+                self.sources.append(source)
+                self.logger.debug(f"Found GeoTIFF: {tif_file}")
+            except Exception as e:
+                self.logger.warning(f"Could not load GeoTIFF {tif_file}: {e}")
+
+        self.logger.info(f"Discovered {len(self.sources)} GeoTIFF sources in {self.catalog_root}")
+
+    def get_elevation(self, coord: Geographic) -> float | None:
+        """Get elevation from the catalog.
+
+        Args:
+            coord: Geographic coordinate to query
+
+        Returns:
+            Elevation in meters or None if no data found
+        """
+        # Try each source that contains the coordinate
+        for source in self.sources:
+            if source.contains(coord):
+                elevation = source.get_elevation(coord)
+                if elevation is not None:
+                    return elevation
+
+        return None
+
+    def get_sources_for_coordinate(self, coord: Geographic) -> list[GeoTIFF_Elevation_Source]:
+        """Get all sources that contain the given coordinate."""
+        return [source for source in self.sources if source.contains(coord)]
+
+    def get_catalog_info(self) -> dict:
+        """Get information about the catalog."""
+        return {
+            'catalog_root': str(self.catalog_root),
+            'total_sources': len(self.sources),
+            'sources': [
+                {
+                    'name': source.name,
+                    'file_path': str(source.file_path),
+                    'bounds': source.bounds._asdict() if source.bounds else None,
+                    'epsg_code': source.epsg_code
+                }
+                for source in self.sources
+            ]
+        }
+
+class Manager:
+    """Manages multiple elevation sources with caching and coordinate transformations."""
+
+    def __init__(
+        self,
+        sources: list[Elevation_Source],
+        cache_enabled: bool = True,
+        interpolation: Interpolation_Method = Interpolation_Method.BILINEAR
+    ):
+        """Initialize terrain manager.
+
+        Args:
+            sources: List of elevation sources to query
+            cache_enabled: Enable elevation caching for performance
+            interpolation: Interpolation method
+        """
         if not sources:
             raise ValueError("At least one elevation source must be provided")
 
         self.cache_enabled = cache_enabled
+        self.interpolation = interpolation
         self.cache_file = Path(tempfile.gettempdir()) / "pointy_mcpointface" / "elevation_cache.pkl"
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Initialize elevation sources
         self.sources: list[Elevation_Source] = sources
+
+        # Set interpolation method on all sources that support it
+        for source in self.sources:
+            if hasattr(source, 'interpolation'):
+                source.interpolation = self.interpolation
 
         # Load cache
         self.elevation_cache: dict[str, Elevation_Point] = {}
@@ -351,25 +437,21 @@ class Manager:
         self.coord_transformer = Transformer()
 
     @classmethod
-    def create_default(cls, cache_enabled: bool = True) -> 'Manager':
-        """Create a default terrain manager with SRTM and AWS sources."""
-        sources = [
-            SRTM_Elevation_Source(),
-            AWS_Elevation_Source()
-        ]
-        return cls(sources, cache_enabled)
+    def create_default(cls, cache_enabled: bool = True, interpolation: Interpolation_Method = Interpolation_Method.BILINEAR) -> 'Manager':
+        """Create a default terrain manager with catalog sources."""
+        try:
+            catalog = Terrain_Catalog()
+            return cls([catalog], cache_enabled, interpolation)
+        except Exception as e:
+            raise ValueError("No terrain sources available. Please ensure GeoTIFF files are in the catalog directory.")
 
     @classmethod
-    def create_srtm_only(cls, cache_enabled: bool = True) -> 'Manager':
-        """Create a terrain manager with only SRTM source."""
-        sources = [SRTM_Elevation_Source()]
-        return cls(sources, cache_enabled)
-
-    @classmethod
-    def create_aws_only(cls, cache_enabled: bool = True) -> 'Manager':
-        """Create a terrain manager with only AWS source."""
-        sources = [AWS_Elevation_Source()]
-        return cls(sources, cache_enabled)
+    def create_catalog_only(cls, catalog_root: str | Path | None = None, cache_enabled: bool = True, interpolation: Interpolation_Method = Interpolation_Method.BILINEAR) -> 'Manager':
+        """Create a terrain manager with only catalog sources."""
+        catalog = Terrain_Catalog(catalog_root)
+        if not catalog.sources:
+            raise ValueError(f"No terrain sources found in catalog: {catalog.catalog_root}")
+        return cls([catalog], cache_enabled, interpolation)
 
     def add_local_dem(self, dem_file: str | Path):
         """Add a local DEM file as an elevation source."""
@@ -379,44 +461,36 @@ class Manager:
         except Exception as e:
             logging.warning(f"Could not add local DEM {dem_file}: {e}")
 
-    def elevation(self, coord: Geographic) -> float | None:
-        """Get elevation for a geographic coordinate."""
-        # Check cache first
-        cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
+    @staticmethod
+    def _cache_key(coord) -> str:
+        """Generate consistent cache key for any coordinate type."""
+        # Convert to geographic coordinates first
+        if coord.type() == Coordinate_Type.GEOGRAPHIC:
+            # Already geographic
+            geo = coord
+        elif coord.type() == Coordinate_Type.UTM:
+            geo = Transformer().utm_to_geo(coord)
+        elif coord.type() == Coordinate_Type.WEB_MERCATOR:
+            geo = Transformer().web_mercator_to_geo(coord)
+        elif coord.type() == Coordinate_Type.UPS:
+            geo = Transformer().ups_to_geo(coord)
+        elif coord.type() == Coordinate_Type.ECEF:
+            geo = Transformer().ecef_to_geo(coord)
+        else:
+            # Other coordinate types - skip caching for now
+            return f"{coord.type().name}_{id(coord)}"
 
-        if self.cache_enabled and cache_key in self.elevation_cache:
-            return self.elevation_cache[cache_key].coord.altitude_m
+        return f"{geo.latitude_deg:.6f},{geo.longitude_deg:.6f}"
 
-        # Try each source in order
-        for source in self.sources:
-            try:
-                elevation = source.get_elevation(coord)
-                if elevation is not None:
-                    # Cache the result
-                    if self.cache_enabled:
-                        point = Elevation_Point(
-                            coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
-                            source=source.name
-                        )
-                        self.elevation_cache[cache_key] = point
-                        self._save_cache()
+    def _query_sources(self, coord: Geographic) -> Elevation_Point | None:
+        """Common logic for querying all elevation sources.
 
-                    return elevation
+        Args:
+            coord: Geographic coordinate to query
 
-            except Exception as e:
-                logging.warning(f"Elevation source {source.name} failed: {e}")
-                continue
-
-        return None
-
-    def elevation_point(self, coord: Geographic) -> Elevation_Point | None:
-        """Get elevation point with full metadata."""
-        # Check cache first
-        cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
-
-        if self.cache_enabled and cache_key in self.elevation_cache:
-            return self.elevation_cache[cache_key]
-
+        Returns:
+            Elevation_Point with full metadata or None if no data found
+        """
         # Try each source in order
         for source in self.sources:
             try:
@@ -427,17 +501,51 @@ class Manager:
                         coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
                         source=source.name
                     )
-
-                    # Cache the result
-                    if self.cache_enabled:
-                        self.elevation_cache[cache_key] = point
-                        self._save_cache()
-
                     return point
 
             except Exception as e:
                 logging.warning(f"Elevation source {source.name} failed: {e}")
                 continue
+
+        return None
+
+    def elevation(self, coord: Geographic) -> float | None:
+        """Get elevation for a geographic coordinate."""
+        # Check cache first
+        cache_key = self._cache_key(coord)
+
+        if self.cache_enabled and cache_key in self.elevation_cache:
+            return self.elevation_cache[cache_key].coord.altitude_m
+
+        # Query sources
+        point = self._query_sources(coord)
+        if point is not None:
+            # Cache the result
+            if self.cache_enabled:
+                self.elevation_cache[cache_key] = point
+                self._save_cache()
+
+            return point.coord.altitude_m
+
+        return None
+
+    def elevation_point(self, coord: Geographic) -> Elevation_Point | None:
+        """Get elevation point with full metadata."""
+        # Check cache first
+        cache_key = self._cache_key(coord)
+
+        if self.cache_enabled and cache_key in self.elevation_cache:
+            return self.elevation_cache[cache_key]
+
+        # Query sources
+        point = self._query_sources(coord)
+        if point is not None:
+            # Cache the result
+            if self.cache_enabled:
+                self.elevation_cache[cache_key] = point
+                self._save_cache()
+
+            return point
 
         return None
 
@@ -449,7 +557,7 @@ class Manager:
         uncached_indices = []
 
         for i, coord in enumerate(coords):
-            cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
+            cache_key = self._cache_key(coord)
 
             if self.cache_enabled and cache_key in self.elevation_cache:
                 cached_results.append(self.elevation_cache[cache_key].coord.altitude_m)
@@ -487,7 +595,7 @@ class Manager:
 
                                 # Cache the result
                                 if self.cache_enabled:
-                                    cache_key = f"{coord.latitude_deg:.6f},{coord.longitude_deg:.6f}"
+                                    cache_key = self._cache_key(coord)
                                     point = Elevation_Point(
                                         coord=Geographic(coord.latitude_deg, coord.longitude_deg, elevation),
                                         source=source.name
@@ -505,12 +613,13 @@ class Manager:
 
     def get_elevation_point(self, latitude: float, longitude: float) -> Elevation_Point | None:
         """Get detailed elevation point with metadata."""
-        cache_key = f"{latitude:.6f},{longitude:.6f}"
+        coord = Geographic(latitude, longitude)
+        cache_key = self._cache_key(coord)
 
         if self.cache_enabled and cache_key in self.elevation_cache:
             return self.elevation_cache[cache_key]
 
-        elevation = self.elevation(latitude, longitude)
+        elevation = self.elevation(coord)
         if elevation is not None:
             return self.elevation_cache.get(cache_key)
 
@@ -568,19 +677,14 @@ def get_terrain_manager() -> Manager:
     return _terrain_manager
 
 
-def create_terrain_manager(sources: list[Elevation_Source], cache_enabled: bool = True) -> Manager:
+def create_terrain_manager(sources: list[Elevation_Source], cache_enabled: bool = True, interpolation: Interpolation_Method = Interpolation_Method.BILINEAR) -> Manager:
     """Create a new terrain manager with specified sources."""
-    return Manager(sources, cache_enabled)
+    return Manager(sources, cache_enabled, interpolation)
 
 
-def create_srtm_manager(cache_enabled: bool = True) -> Manager:
-    """Create a terrain manager with only SRTM source."""
-    return Manager.create_srtm_only(cache_enabled)
-
-
-def create_aws_manager(cache_enabled: bool = True) -> Manager:
-    """Create a terrain manager with only AWS source."""
-    return Manager.create_aws_only(cache_enabled)
+def create_catalog_manager(catalog_root: str | Path | None = None, cache_enabled: bool = True, interpolation: Interpolation_Method = Interpolation_Method.BILINEAR) -> Manager:
+    """Create a terrain manager with only catalog sources."""
+    return Manager.create_catalog_only(catalog_root, cache_enabled, interpolation)
 
 
 def elevation(coord: Geographic) -> float | None:

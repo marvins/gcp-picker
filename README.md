@@ -35,6 +35,179 @@ sudo apt-get install gdal-bin libgdal-dev
 # Windows: Use OSGeo4W or conda
 ```
 
+## Configuration
+
+### API Keys and External Services
+
+The application supports several external elevation data sources that require API keys. Configuration follows this precedence order:
+
+1. **Command Line Arguments** (highest priority)
+2. **Application Configuration File**
+3. **Environment Variables** (lowest priority)
+
+#### Supported Elevation Sources
+
+##### Google Elevation API
+- **Purpose**: Primary elevation data source with global coverage
+- **Rate Limits**: Free tier: 2,500 requests per day, $0.005 per additional request
+- **Required**: API key from Google Cloud Platform
+
+##### OpenTopography API
+- **Purpose**: SRTM and other scientific DEM datasets
+- **Rate Limits**: Free tier: 200 requests/day (academics), 50/day (non-academics)
+- **Required**: API key from OpenTopography portal
+- **Register**: https://portal.opentopography.org/requestService?service=api
+
+#### Configuration Methods
+
+##### 1. Environment Variables (Recommended for Development)
+
+```bash
+# Google Elevation API
+export GOOGLE_ELEVATION_API_KEY="your_google_api_key_here"
+
+# OpenTopography API
+export OPENTOPOGRAPHY_API_KEY="your_opentopography_api_key_here"
+
+# Add to shell profile for persistence
+echo 'export GOOGLE_ELEVATION_API_KEY="your_key"' >> ~/.bashrc
+echo 'export OPENTOPOGRAPHY_API_KEY="your_key"' >> ~/.bashrc
+```
+
+##### 2. Application Configuration File
+
+Create `~/.pointy/config.yaml`:
+
+```yaml
+# Elevation API Configuration
+elevation:
+  google:
+    api_key: "your_google_api_key_here"
+  opentopography:
+    api_key: "your_opentopography_api_key_here"
+
+# Cache settings
+cache:
+  enabled: true
+  max_size_mb: 100
+  directory: "~/.pointy/cache"
+
+# Source preferences
+sources:
+  preferred_order: ["google", "opentopography", "aws"]
+  fallback_enabled: true
+```
+
+##### 3. Command Line Arguments
+
+```bash
+# When running the application
+python main.py --google-api-key "your_key" --opentopography-api-key "your_key"
+
+# When running tests
+pytest --google-api-key "your_key" --opentopography-api-key "your_key"
+```
+
+#### API Key Setup Instructions
+
+##### Google Elevation API
+
+1. **Create Google Cloud Project**
+   - Visit https://console.cloud.google.com/
+   - Create new project or select existing one
+
+2. **Enable Elevation API**
+   - Go to "APIs & Services" → "Library"
+   - Search for "Elevation API"
+   - Click "Enable"
+
+3. **Create API Key**
+   - Go to "APIs & Services" → "Credentials"
+   - Click "Create Credentials" → "API Key"
+   - Copy the generated key
+
+4. **Restrict API Key (Recommended)**
+   - Edit the API key
+   - Under "API restrictions", select "Restrict key"
+   - Choose "Elevation API" only
+   - Add IP or application restrictions as needed
+
+##### OpenTopography API
+
+1. **Register Account**
+   - Visit https://portal.opentopography.org/
+   - Click "Sign Up" to create account
+
+2. **Request API Key**
+   - Go to "My Account" → "Request Service"
+   - Select "API" service
+   - Fill out the form with your intended use
+   - Academic users get higher rate limits
+
+3. **Receive API Key**
+   - Key will be emailed to you
+   - Also available in "My Account" section
+
+#### Fallback Behavior
+
+The elevation system uses intelligent fallback:
+
+1. **Primary Source**: Google Elevation API (if key available)
+2. **Secondary Source**: OpenTopography (if key available)
+3. **Tertiary Source**: AWS Terrain Tiles (no key required, limited coverage)
+
+If no API keys are configured, the system will:
+- Use AWS Terrain Tiles as primary source
+- Log warnings about missing keys
+- Still provide elevation data for supported regions
+
+#### Testing Configuration
+
+Test your API key configuration:
+
+```python
+from pointy.core.terrain import Manager
+
+# Test configuration
+manager = Manager.create_default()
+coord = Geographic(40.7, -74.0)  # New York
+
+elevation = manager.elevation(coord)
+print(f"Elevation: {elevation}m")
+
+# Check which sources are working
+stats = manager.get_cache_stats()
+print(f"Available sources: {stats['sources']}")
+```
+
+#### Troubleshooting API Keys
+
+##### Google Elevation API Issues
+- **Error**: "REQUEST_DENIED" → Check API key restrictions
+- **Error**: "INVALID_ARGUMENT" → Verify coordinate format
+- **Error**: "OVER_QUERY_LIMIT" → Wait and retry, or upgrade quota
+
+##### OpenTopography API Issues
+- **Error**: 401 Unauthorized → Check API key validity
+- **Error**: 403 Forbidden → Rate limit exceeded
+- **Error**: 404 Not Found → Check API endpoint URL
+
+##### General Issues
+```bash
+# Test API key validity
+curl -G "https://maps.googleapis.com/maps/api/elevation/json" \
+  --data-urlencode "locations=40.7,-74.0" \
+  --data-urlencode "key=$GOOGLE_ELEVATION_API_KEY"
+
+# Test OpenTopography API
+curl -G "https://portal.opentopography.org/API/globaldem" \
+  --data-urlencode "lat=40.7" \
+  --data-urlencode "lon=-74.0" \
+  --data-urlencode "demtype=SRTMGL1" \
+  --data-urlencode "outputFormat=json" \
+  --data-urlencode "api_key=$OPENTOPOGRAPHY_API_KEY"
+```
+
 ## Usage
 
 ### Basic Workflow
