@@ -1,11 +1,28 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    graphics_image_view.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Graphics Image View - Interactive image display using QGraphicsView framework
 """
 
-from qtpy.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
-from qtpy.QtCore import Qt, Signal, QPoint
-from qtpy.QtGui import QPainter, QPen, QColor, QFont, QPixmap, QMouseEvent, QWheelEvent
+#  Python Standard Libraries
+
+#  Third-Party Libraries
 import numpy as np
+from qtpy.QtCore import QPoint, Qt, Signal
+from qtpy.QtGui import QColor, QFont, QMouseEvent, QPen, QPainter, QPixmap, QWheelEvent
+from qtpy.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
 
 
 class Graphics_Image_View(QGraphicsView):

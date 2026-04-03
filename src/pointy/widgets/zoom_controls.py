@@ -1,10 +1,27 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    zoom_controls.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Zoom Controls Widget
 """
 
-from qtpy.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QSlider
-from qtpy.QtCore import Signal, Qt
+#  Python Standard Libraries
+
+#  Third-Party Libraries
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSlider, QWidget
 
 class Zoom_Controls(QWidget):
     """Zoom control widget with buttons and slider."""

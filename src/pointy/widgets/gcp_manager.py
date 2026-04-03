@@ -1,12 +1,29 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gcp_manager.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 GCP Manager Widget - Manage ground control points
 """
 
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QTableWidget, QTableWidgetItem, QPushButton,
-                           QHeaderView, QCheckBox)
+#  Python Standard Libraries
+
+#  Third-Party Libraries
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QFont, QColor
+from qtpy.QtWidgets import (QCheckBox, QHBoxLayout, QLabel, QPushButton,
+                           QHeaderView, QTableWidget, QTableWidgetItem,
+                           QVBoxLayout, QWidget)
 
 
 class GCP_Manager(QWidget):

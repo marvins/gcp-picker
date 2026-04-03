@@ -1,11 +1,28 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    image_canvas.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Image Canvas Widget - Interactive image display with point selection, zoom, and pan
 """
 
+#  Python Standard Libraries
 import logging
-from qtpy.QtWidgets import QWidget, QScrollArea
-from qtpy.QtCore import Qt, Signal, QPoint
-from qtpy.QtGui import QPainter, QPen, QColor, QFont, QMouseEvent, QWheelEvent
+
+#  Third-Party Libraries
+from qtpy.QtCore import QPoint, Qt, Signal
+from qtpy.QtGui import QColor, QFont, QMouseEvent, QPen, QPainter, QWheelEvent
+from qtpy.QtWidgets import QScrollArea, QWidget
 
 class Image_Canvas(QWidget):
     """Interactive image canvas with point selection capabilities."""

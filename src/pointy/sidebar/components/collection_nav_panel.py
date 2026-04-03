@@ -35,6 +35,7 @@ class Collection_Nav_Panel(QWidget):
         # Image counter
         self.counter_label = QLabel("No collection loaded")
         self.counter_label.setAlignment(Qt.AlignCenter)
+        self.counter_label.setStyleSheet("font-size: 10px; color: #666; font-weight: bold;")
         layout.addWidget(self.counter_label)
 
         # Navigation buttons row
@@ -95,6 +96,7 @@ class Collection_Nav_Panel(QWidget):
                 border-radius: 3px;
                 padding: 5px;
                 font-weight: bold;
+                font-size: 9pt;
             }
             QPushButton:hover {
                 background-color: #e0e0e0;
