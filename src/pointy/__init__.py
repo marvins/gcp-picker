@@ -29,10 +29,13 @@ from .core.coordinate import (
     Transformer,
     Geographic,
     Coordinate,
+    Coordinate_Type,
     UTM,
+    Web_Mercator,
     ECEF,
     Pixel,
 )
+from .core.datum import Datum, Vertical_Datum
 
 from .core.terrain import (
     Manager,
@@ -57,9 +60,13 @@ __all__ = [
     "Transformer",
     "Geographic",
     "Coordinate",
+    "Coordinate_Type",
     "UTM",
+    "Web_Mercator",
     "ECEF",
     "Pixel",
+    "Datum",
+    "Vertical_Datum",
     "Manager",
     "Elevation_Point",
     "Elevation_Source",
