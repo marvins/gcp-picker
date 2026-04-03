@@ -47,6 +47,22 @@ class Tabbed_Sidebar(QWidget):
 
         # Create tabs
 
+        # Info Tab (first and default)
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(5, 5, 5, 5)
+        info_layout.setSpacing(10)
+
+        self.status_panel = Status_Panel()
+        info_layout.addWidget(self.status_panel)
+
+        self.metadata_panel = Metadata_Panel()
+        info_layout.addWidget(self.metadata_panel)
+
+        info_layout.addStretch()
+
+        self.tab_widget.addTab(info_widget, "Info")
+
         # Image Controls Tab
         image_controls_widget = QWidget()
         image_controls_layout = QVBoxLayout(image_controls_widget)
@@ -87,21 +103,8 @@ class Tabbed_Sidebar(QWidget):
 
         self.tab_widget.addTab(nav_widget, "Navigation")
 
-        # Info Tab
-        info_widget = QWidget()
-        info_layout = QVBoxLayout(info_widget)
-        info_layout.setContentsMargins(5, 5, 5, 5)
-        info_layout.setSpacing(10)
-
-        self.status_panel = Status_Panel()
-        info_layout.addWidget(self.status_panel)
-
-        self.metadata_panel = Metadata_Panel()
-        info_layout.addWidget(self.metadata_panel)
-
-        info_layout.addStretch()
-
-        self.tab_widget.addTab(info_widget, "Info")
+        # Set Info tab as default
+        self.tab_widget.setCurrentIndex(0)
 
         # Add tab widget to layout
         layout.addWidget(self.tab_widget)

@@ -31,6 +31,7 @@ class Leaflet_Bridge(QObject):
     # Signals
     point_clicked = Signal(float, float, float, float)  # x, y, lon, lat
     map_ready = Signal()
+    cursor_moved = Signal(float, float, float)  # lat, lon, alt (alt optional)
 
     def __init__(self):
         super().__init__()
@@ -42,6 +43,10 @@ class Leaflet_Bridge(QObject):
     @Slot()
     def map_ready_from_js(self):
         self.map_ready.emit()
+
+    @Slot(float, float, float)
+    def cursor_moved_from_js(self, lat: float, lon: float, alt: float = 0.0):
+        self.cursor_moved.emit(lat, lon, alt)
 
 
 class Leaflet_Reference_Viewer(QWidget):
@@ -159,6 +164,7 @@ class Leaflet_Reference_Viewer(QWidget):
             # Connect bridge signals
             self.bridge.point_clicked.connect(self.on_javascript_point_clicked)
             self.bridge.map_ready.connect(self.on_map_ready)
+            self.bridge.cursor_moved.connect(self.cursor_moved.emit)
 
     def create_initial_map(self):
         """Create the initial Leaflet map."""
@@ -238,6 +244,25 @@ class Leaflet_Reference_Viewer(QWidget):
                     e.latlng.lng,
                     e.latlng.lat
                 );
+            });
+
+            // Add cursor tracking
+            map.on('mousemove', function(e) {
+                console.log('Mouse move detected:', e.latlng.lat, e.latlng.lng);
+                if (!bridge || typeof bridge.cursor_moved_from_js !== 'function') {
+                    console.log('Bridge or cursor_moved_from_js not available');
+                    return;
+                }
+                try {
+                    bridge.cursor_moved_from_js(
+                        e.latlng.lat,
+                        e.latlng.lng,
+                        0.0  // Default altitude to 0 since we don't have terrain data yet
+                    );
+                    console.log('Cursor moved signal sent');
+                } catch (error) {
+                    console.error('Error sending cursor moved signal:', error);
+                }
             });
         }
 

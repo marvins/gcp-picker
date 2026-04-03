@@ -3,8 +3,8 @@ GCP Panel - Ground Control Point management panel
 """
 
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton)
-from qtpy.QtCore import Signal
+                           QPushButton, QToolBar, QSizePolicy)
+from qtpy.QtCore import Signal, Qt, QSize
 from qtpy.QtGui import QFont
 
 from pointy.widgets.gcp_manager import GCP_Manager
@@ -19,6 +19,9 @@ class GCP_Panel(QWidget):
     gcp_selected = Signal(int)  # gcp_id
     gcp_updated = Signal(object)  # GCP object
     lock_state_changed = Signal(bool)  # is_locked
+    save_gcps_requested = Signal()  # Save GCPs to file
+    load_gcps_requested = Signal()  # Load GCPs from file
+    clear_gcps_requested = Signal()  # Clear all GCPs
 
     def __init__(self):
         super().__init__()
@@ -61,6 +64,9 @@ class GCP_Panel(QWidget):
         header_layout.addWidget(self.lock_button)
 
         layout.addLayout(header_layout)
+
+        # GCP Control Toolbar
+        self.setup_gcp_toolbar(layout)
 
         # GCP Manager (reuse existing widget)
         self.gcp_manager = GCP_Manager()
@@ -126,3 +132,53 @@ class GCP_Panel(QWidget):
     def get_gcps(self):
         """Get all GCPs from the panel."""
         return self.gcp_manager.get_gcps()
+
+    def setup_gcp_toolbar(self, parent_layout):
+        """Setup the GCP control toolbar."""
+        # Create toolbar
+        toolbar = QToolBar()
+        toolbar.setOrientation(Qt.Horizontal)
+        toolbar.setMovable(False)
+        toolbar.setIconSize(QSize(16, 16))
+        toolbar.setStyleSheet("""
+            QToolBar {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: #f8f8f8;
+                spacing: 2px;
+                padding: 2px;
+            }
+            QToolBar QToolButton {
+                padding: 4px;
+                border: 1px solid transparent;
+                border-radius: 3px;
+                background-color: transparent;
+            }
+            QToolBar QToolButton:hover {
+                background-color: #e0e0e0;
+                border: 1px solid #ccc;
+            }
+            QToolBar QToolButton:pressed {
+                background-color: #d0d0d0;
+            }
+        """)
+
+        # Save GCPs button
+        save_action = toolbar.addAction("💾 Save")
+        save_action.setToolTip("Save GCPs to file")
+        save_action.triggered.connect(self.save_gcps_requested.emit)
+
+        # Load GCPs button
+        load_action = toolbar.addAction("📁 Load")
+        load_action.setToolTip("Load GCPs from file")
+        load_action.triggered.connect(self.load_gcps_requested.emit)
+
+        toolbar.addSeparator()
+
+        # Clear All GCPs button
+        clear_action = toolbar.addAction("🗑️ Clear All")
+        clear_action.setToolTip("Remove all ground control points")
+        clear_action.triggered.connect(self.clear_gcps_requested.emit)
+
+        # Add toolbar to layout
+        parent_layout.addWidget(toolbar)

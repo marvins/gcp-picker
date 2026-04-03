@@ -18,11 +18,15 @@ Test Image Viewer - Left panel for displaying and selecting points in test image
 
 #  Python Standard Libraries
 import logging
+import time
 from pathlib import Path
+import json
 
 #  Third-Party Libraries
 import cv2
 import numpy as np
+import rasterio
+from PIL import Image
 from qtpy.QtCore import Qt, Signal, QEvent
 from qtpy.QtGui import QImage, QPixmap, QFont, QWheelEvent
 from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -39,6 +43,7 @@ class Test_Image_Viewer(QWidget):
     image_loaded = Signal(str)  # image path
     gcp_point_clicked = Signal(int)  # gcp_id
     cursor_moved = Signal(int, int, object, object, object, object)  # x, y, pixel_value, lat, lon, alt
+    image_adjusted = Signal()  # emitted when image adjustments are applied
 
     def __init__(self):
         super().__init__()
@@ -113,26 +118,37 @@ class Test_Image_Viewer(QWidget):
 
     def load_image(self, image_path):
         """Load an image file."""
+        start_time = time.time()
+
         try:
             self.image_path = image_path
+            logging.info(f"Starting image load: {image_path}")
 
             # Load image using OpenCV for better format support
             if image_path.lower().endswith(('.tif', '.tiff')):
                 # Use GDAL for GeoTIFF files to get RPC data
+                load_start = time.time()
                 self.load_geotiff(image_path)
+                logging.info(f"GeoTIFF load took: {time.time() - load_start:.3f}s")
             else:
                 # Use PIL/OpenCV for regular images
+                load_start = time.time()
                 self.original_image = cv2.imread(image_path)
                 if self.original_image is None:
                     # Try PIL as fallback
                     pil_image = Image.open(image_path)
                     self.original_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                logging.info(f"OpenCV/PIL load took: {time.time() - load_start:.3f}s")
 
+            adjust_start = time.time()
             self.current_image = self.original_image.copy()
             self.apply_image_adjustments()  # Apply current settings to new image
+            logging.info(f"Image adjustments took: {time.time() - adjust_start:.3f}s")
 
             # Extract RPC data if available
+            rpc_start = time.time()
             self.extract_rpc_data(image_path)
+            logging.info(f"RPC extraction took: {time.time() - rpc_start:.3f}s")
 
             # Update info
             height, width = self.current_image.shape[:2]
@@ -145,20 +161,27 @@ class Test_Image_Viewer(QWidget):
             self.image_loaded.emit(image_path)
             self.status_label.setText("Image loaded successfully")
 
+            total_time = time.time() - start_time
+            logging.info(f"Total image load took: {total_time:.3f}s for {width}x{height} image")
+
         except Exception as e:
+            logging.error(f"Image load failed after {time.time() - start_time:.3f}s: {e}")
             self.status_label.setText(f"Error loading image: {str(e)}")
             raise
 
     def load_geotiff(self, image_path):
         """Load GeoTIFF using rasterio to preserve georeferencing and bit depth."""
         try:
+            logging.info(f"Loading GeoTIFF: {image_path}")
             with rasterio.open(image_path) as src:
                 # Preserve original data type and bit depth
                 self.dtype = src.dtypes[0]
                 self.bit_depth = src.dtypes[0].itemsize * 8
+                logging.info(f"Detected dtype: {self.dtype}, bit depth: {self.bit_depth}")
 
                 # Read all bands
                 image_data = src.read()
+                logging.info(f"Read image data with shape: {image_data.shape}")
 
                 # Convert from (bands, height, width) to (height, width, bands)
                 if image_data.ndim == 3:
@@ -180,8 +203,10 @@ class Test_Image_Viewer(QWidget):
 
                 # Update pixel range based on bit depth
                 self.max_pixel = (2 ** self.bit_depth) - 1
+                logging.info(f"Set max pixel to: {self.max_pixel}")
 
-        except Exception:
+        except Exception as e:
+            logging.error(f"Error loading GeoTIFF: {e}")
             # Fallback to regular image loading
             self.original_image = cv2.imread(image_path)
             if self.original_image is None:
@@ -189,6 +214,7 @@ class Test_Image_Viewer(QWidget):
             self.dtype = np.uint8
             self.bit_depth = 8
             self.max_pixel = 255
+            logging.info(f"Fallback to 8-bit, max pixel: {self.max_pixel}")
 
     def extract_rpc_data(self, image_path):
         """Extract RPC data from GeoTIFF if available."""
@@ -403,6 +429,9 @@ class Test_Image_Viewer(QWidget):
         self.current_image = adjusted
         self.update_display()
 
+        # Emit signal that image was adjusted
+        self.image_adjusted.emit()
+
     def get_image_data(self):
-        """Get the current image data for histogram."""
+        """Get the current image data for histogram (after adjustments)."""
         return self.current_image

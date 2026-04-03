@@ -138,7 +138,21 @@ class Graphics_Image_View(QGraphicsView):
 
         # Emit cursor_moved signal for metadata panel
         scene_pos = self.mapToScene(event.pos())
-        self.cursor_moved.emit(int(scene_pos.x()), int(scene_pos.y()), None)
+        x, y = int(scene_pos.x()), int(scene_pos.y())
+
+        # Get pixel value if image data is available
+        pixel_value = None
+        if self.original_image is not None:
+            height, width = self.original_image.shape[:2]
+            if 0 <= x < width and 0 <= y < height:
+                if len(self.original_image.shape) == 3:
+                    # RGB image - get RGB values
+                    pixel_value = tuple(self.original_image[y, x].tolist())
+                else:
+                    # Single band
+                    pixel_value = self.original_image[y, x]
+
+        self.cursor_moved.emit(x, y, pixel_value)
 
         # Check if hovering over a GCP point
         hovering_gcp = False

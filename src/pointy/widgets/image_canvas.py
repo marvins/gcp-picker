@@ -2,6 +2,7 @@
 Image Canvas Widget - Interactive image display with point selection, zoom, and pan
 """
 
+import logging
 from qtpy.QtWidgets import QWidget, QScrollArea
 from qtpy.QtCore import Qt, Signal, QPoint
 from qtpy.QtGui import QPainter, QPen, QColor, QFont, QMouseEvent, QWheelEvent
@@ -104,7 +105,8 @@ class Image_Canvas(QWidget):
         mouse_y = event.position().y()
 
         # Debug logging
-        print(f"DEBUG: Before zoom - h_scroll={h_scroll}, v_scroll={v_scroll}, mouse=({mouse_x},{mouse_y}), zoom={self.zoom_factor}")
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Before zoom - h_scroll={h_scroll}, v_scroll={v_scroll}, mouse=({mouse_x},{mouse_y}), zoom={self.zoom_factor}")
 
         # Calculate the point in the image that is under the mouse before zoom
         # This is: (scroll_position + mouse_position) / current_zoom
@@ -119,8 +121,8 @@ class Image_Canvas(QWidget):
         new_h_scroll = int(image_under_mouse_x * new_zoom - mouse_x)
         new_v_scroll = int(image_under_mouse_y * new_zoom - mouse_y)
 
-        print(f"DEBUG: After zoom - new_h_scroll={new_h_scroll}, new_v_scroll={new_v_scroll}, new_zoom={new_zoom}")
-        print(f"DEBUG: Image point under mouse: ({image_under_mouse_x},{image_under_mouse_y})")
+        logger.debug(f"After zoom - new_h_scroll={new_h_scroll}, new_v_scroll={new_v_scroll}, new_zoom={new_zoom}")
+        logger.debug(f"Image point under mouse: ({image_under_mouse_x},{image_under_mouse_y})")
 
         # Apply new scroll position
         scroll_area.horizontalScrollBar().setValue(new_h_scroll)

@@ -2,6 +2,7 @@
 Collection Manager - Manage collection state and operations
 """
 
+import logging
 import tomllib
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -109,7 +110,8 @@ class Collection_Manager(QObject):
             return True
 
         except Exception as e:
-            print(f"Error loading collection: {e}")
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error loading collection: {e}")
             return False
 
     def get_first_image(self) -> Optional[str]:

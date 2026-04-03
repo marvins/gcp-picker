@@ -24,12 +24,16 @@ import argparse
 from pathlib import Path
 
 #  Third-Party Libraries
-from qtpy.QtWidgets import QApplication
-from qtpy.QtCore import qInstallMessageHandler, QtMsgType, QMessageLogContext
+from qtpy.QtWidgets import QApplication, QSplashScreen
+from qtpy.QtCore import qInstallMessageHandler, QtMsgType, QMessageLogContext, Qt
+from qtpy.QtGui import QPixmap, QIcon
 
 #  Project Libraries
+from pointy.main_window import Main_Window
+from pointy.widgets.splash_screen import Splash_Manager
 from pointy import __version__
 from pointy import get_main_window
+from pointy.resources import resources
 
 def qt_message_handler(mode, context, message):
     """Qt message handler to force crashes in the Qt event loop."""
@@ -124,18 +128,39 @@ def main():
     # Create Qt application
     app = QApplication(sys.argv)
     app.setApplicationName("Pointy-McPointface")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("Terminus LLC")
 
+    # Set application icon globally
+    app_icon = resources.get_app_icon()
+    if not app_icon.isNull():
+        app.setWindowIcon(app_icon)
+
+    # Create and show splash screen
+    splash_manager = Splash_Manager()
+    splash = splash_manager.create_splash()
+
     logger.info("Creating main window")
+    splash_manager.next_step()  # "Creating main window..."
 
     # Create main window
-    MainWindow = get_main_window()
-    main_window = MainWindow()
+    main_window = Main_Window()
+
+    splash_manager.next_step()  # "Setting up UI components..."
+    main_window.setup_ui()
+
+    splash_manager.next_step()  # "Connecting signals..."
+    main_window.connect_signals()
+
+    splash_manager.next_step()  # "Loading reference data..."
     main_window.show()
 
     if args.collection:
+        splash_manager.update_progress(90, "Loading collection...")
         main_window.load_collection_from_path(args.collection)
+
+    # Close splash screen
+    splash_manager.close_splash()
 
     logger.info("Starting Qt event loop")
 

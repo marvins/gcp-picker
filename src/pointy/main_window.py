@@ -17,12 +17,17 @@ Main Window for Pointy-McPointface Application
 """
 
 #  Python Standard Libraries
+import logging
+import time
+import tempfile
+import tomllib  # Python 3.11+ for reading TOML
+from tomli_w import dump as toml_dump  # For writing TOML
 from pathlib import Path
 
 #  Third-Party Libraries
 import numpy as np
 from qtpy.QtCore import Qt
-from qtpy.QtGui import QKeySequence, QGuiApplication
+from qtpy.QtGui import QKeySequence, QGuiApplication, QIcon
 from qtpy.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
                         QSplitter, QStatusBar, QFileDialog,
                         QMessageBox, QToolBar, QAction)
@@ -36,13 +41,19 @@ from pointy.core.gcp_processor import GCP_Processor
 from pointy.core.orthorectifier import Orthorectifier
 from pointy.core.collection_manager import Collection_Manager
 from pointy.core.imagery_api import Imagery_Loader
+from pointy.resources import resources
 
-class MainWindow(QMainWindow):
+class Main_Window(QMainWindow):
     """Main application window for Pointy-McPointface."""
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Pointy-McPointface - Where Coordinates Get Pointy!")
+        self.setWindowTitle("Pointy-McPointface")
+
+        # Set application icon
+        app_icon = resources.get_app_icon()
+        if not app_icon.isNull():
+            self.setWindowIcon(app_icon)
 
         # Get screen dimensions and set window size to fit
         screen = QGuiApplication.primaryScreen()
@@ -231,29 +242,6 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar()
         self.addToolBar(toolbar)
 
-        # Open test image
-        open_test_action = QAction('Open Test Image', self)
-        open_test_action.triggered.connect(self.open_test_image)
-        toolbar.addAction(open_test_action)
-
-        toolbar.addSeparator()
-
-        # Save/Load GCPs
-        save_gcps_action = QAction('Save GCPs', self)
-        save_gcps_action.triggered.connect(self.save_gcps)
-        toolbar.addAction(save_gcps_action)
-
-        load_gcps_action = QAction('Load GCPs', self)
-        load_gcps_action.triggered.connect(self.load_gcps)
-        toolbar.addAction(load_gcps_action)
-
-        toolbar.addSeparator()
-
-        # Clear GCPs
-        clear_gcps_action = QAction('Clear All', self)
-        clear_gcps_action.triggered.connect(self.clear_all_gcps)
-        toolbar.addAction(clear_gcps_action)
-
     def setup_status_bar(self):
         """Setup the status bar."""
         self.status_bar = QStatusBar()
@@ -267,6 +255,7 @@ class MainWindow(QMainWindow):
         self.test_viewer.image_loaded.connect(self.on_test_image_loaded)
         self.test_viewer.gcp_point_clicked.connect(self.on_test_gcp_clicked)
         self.test_viewer.image_loaded.connect(self._on_image_loaded_update_histogram)
+        self.test_viewer.image_adjusted.connect(self._on_image_adjusted_update_histogram)
 
         # Reference viewer signals
         self.reference_viewer.point_selected.connect(self.on_reference_point_selected)
@@ -276,6 +265,11 @@ class MainWindow(QMainWindow):
         self.gcp_manager.gcp_added.connect(self.on_gcp_added)
         self.gcp_manager.gcp_removed.connect(self.on_gcp_removed)
         self.gcp_manager.gcp_selected.connect(self.on_gcp_selected)
+
+        # GCP panel toolbar signals
+        self.gcp_panel.save_gcps_requested.connect(self.save_gcps)
+        self.gcp_panel.load_gcps_requested.connect(self.load_gcps)
+        self.gcp_panel.clear_gcps_requested.connect(self.clear_all_gcps)
 
         # View control panel signals
         view_panel = self.sidebar.get_view_control_panel()
@@ -293,7 +287,7 @@ class MainWindow(QMainWindow):
 
     def on_reference_point_selected(self, x, y, lon, lat):
         """Handle reference point selection."""
-        self.gcp_processor.set_pending_reference_point((x, y, lon, lat))
+        self.gcp_processor.set_pending_reference_point(x, y, lon, lat)
         self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
         self.update_reference_status(lat=lat, lon=lon)
 
@@ -307,6 +301,11 @@ class MainWindow(QMainWindow):
         """Handle test image loading."""
         self.gcp_processor.set_test_image_path(image_path)
         self.status_bar.showMessage(f'Test image loaded: {Path(image_path).name}')
+
+        # Apply DRA if auto-stretch is enabled
+        view_panel = self.sidebar.get_view_control_panel()
+        if view_panel.is_auto_stretch():
+            self.test_viewer.set_auto_stretch(True)
 
     def on_test_gcp_clicked(self, gcp_id):
         """Handle GCP point click in test viewer."""
@@ -330,21 +329,6 @@ class MainWindow(QMainWindow):
         x_text = f"X: {x:.1f}" if x is not None else "X: N/A"
         y_text = f"Y: {y:.1f}" if y is not None else "Y: N/A"
         self.status_bar.showMessage(f"Test {zoom_text} | {x_text} | {y_text}")
-
-    def open_test_image(self):
-        """Open a test image file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Open Test Image', '',
-            'Image Files (*.tif *.tiff *.jpg *.jpeg *.png *.img);;All Files (*)'
-        )
-
-        if file_path:
-            try:
-                self.test_viewer.load_image(file_path)
-                self.status_bar.showMessage(f'Loaded test image: {Path(file_path).name}')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to load test image:\n{str(e)}')
-                self.status_bar.showMessage('Failed to load test image')
 
     def save_gcps(self):
         """Save GCPs to file."""
@@ -394,10 +378,23 @@ class MainWindow(QMainWindow):
         )
 
         if reply == QMessageBox.Yes:
-            self.gcp_processor.clear_gcps()
-            self.gcp_manager.clear_gcps()
-            self.test_viewer.clear_points()
-            self.reference_viewer.clear_points()
+            # Clear GCP processor
+            if hasattr(self.gcp_processor, 'clear_gcps'):
+                self.gcp_processor.clear_gcps()
+
+            # Clear GCP manager widget
+            if hasattr(self.gcp_manager, 'clear_all_gcps'):
+                self.gcp_manager.clear_all_gcps()
+            else:
+                logging.warning("GCP manager does not have clear_all_gcps method")
+
+            # Clear viewer points
+            if hasattr(self.test_viewer, 'clear_points'):
+                self.test_viewer.clear_points()
+
+            if hasattr(self.reference_viewer, 'clear_points'):
+                self.reference_viewer.clear_points()
+
             self.status_bar.showMessage('Cleared all GCPs')
 
     def toggle_orthorectification(self, enabled):
@@ -428,34 +425,84 @@ class MainWindow(QMainWindow):
 
     def _on_image_loaded_update_histogram(self, image_path):
         """Update histogram when image is loaded."""
+        start_time = time.time()
+
+        logging.info(f"Updating histogram for image: {image_path}")
+
         # Get image data from test viewer
         if hasattr(self.test_viewer, 'get_image_data'):
+            data_start = time.time()
             image_data = self.test_viewer.get_image_data()
+            logging.info(f"Getting image data took: {time.time() - data_start:.3f}s")
+
             if image_data is not None:
+                logging.info(f"Got image data with shape: {image_data.shape}, dtype: {image_data.dtype}")
+
+                panel_start = time.time()
                 view_panel = self.sidebar.get_view_control_panel()
+                logging.info(f"Getting view panel took: {time.time() - panel_start:.3f}s")
 
                 # Set pixel range based on image bit depth
                 if hasattr(self.test_viewer, 'bit_depth'):
                     bit_depth = self.test_viewer.bit_depth
                     max_pixel = (2 ** bit_depth) - 1
+                    logging.info(f"Detected bit depth: {bit_depth}, max pixel: {max_pixel}")
 
                     # Set the range and get actual data min/max
+                    range_start = time.time()
                     view_panel.set_min_max_range(0, max_pixel)
+                    logging.info(f"Set min/max range to 0-{max_pixel} in {time.time() - range_start:.3f}s")
 
                     # Calculate actual pixel range from the image data
+                    calc_start = time.time()
                     actual_min = int(np.min(image_data))
                     actual_max = int(np.max(image_data))
+                    logging.info(f"Actual data range: {actual_min}-{actual_max} (calc took {time.time() - calc_start:.3f}s)")
 
                     # Set the spin boxes to actual data range
+                    spin_start = time.time()
                     view_panel.min_pixel_spin.setValue(actual_min)
                     view_panel.max_pixel_spin.setValue(actual_max)
+                    logging.info(f"Set spin boxes to actual range: {actual_min}-{actual_max} in {time.time() - spin_start:.3f}s")
 
                     # Enable the controls for manual adjustment
                     if not view_panel.auto_stretch_checkbox.isChecked():
                         view_panel.min_pixel_spin.setEnabled(True)
                         view_panel.max_pixel_spin.setEnabled(True)
 
-                view_panel.update_histogram(image_data)
+                    # Update histogram with proper bit depth consideration
+                    num_bins = min(256, max_pixel + 1)
+                    hist_start = time.time()
+                    view_panel.update_histogram(image_data, num_bins=num_bins)
+                    logging.info(f"Histogram update with {num_bins} bins took: {time.time() - hist_start:.3f}s")
+                else:
+                    logging.warning("No bit depth attribute found on test viewer")
+                    hist_start = time.time()
+                    view_panel.update_histogram(image_data)
+                    logging.info(f"Histogram update (default) took: {time.time() - hist_start:.3f}s")
+            else:
+                logging.warning("No image data available from test viewer")
+        else:
+            logging.warning("Test viewer has no get_image_data method")
+
+        total_time = time.time() - start_time
+        logging.info(f"Total histogram update took: {total_time:.3f}s")
+
+    def _on_image_adjusted_update_histogram(self):
+        """Update histogram when image adjustments are applied."""
+        # Get current image data from test viewer
+        if hasattr(self.test_viewer, 'get_image_data'):
+            image_data = self.test_viewer.get_image_data()
+            if image_data is not None:
+                view_panel = self.sidebar.get_view_control_panel()
+
+                # Update histogram with current (adjusted) image data
+                if hasattr(self.test_viewer, 'bit_depth'):
+                    bit_depth = self.test_viewer.bit_depth
+                    max_pixel = (2 ** bit_depth) - 1
+                    view_panel.update_histogram(image_data, num_bins=min(256, max_pixel + 1))
+                else:
+                    view_panel.update_histogram(image_data)
 
     def on_gcp_lock_changed(self, is_locked: bool):
         """Handle GCP panel lock state changes."""
@@ -523,6 +570,7 @@ class MainWindow(QMainWindow):
 
     def on_reference_cursor_moved(self, lat: float, lon: float, alt: float | None = None):
         """Handle cursor movement over reference viewer."""
+        logging.debug(f"Reference cursor moved: lat={lat}, lon={lon}, alt={alt}")
         self.sidebar.get_metadata_panel().update_reference_metadata(lat, lon, alt)
 
     def on_test_cursor_moved(self, x: int, y: int, pixel_value: str | None = None,
@@ -669,6 +717,59 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
             raise
+
+    def open_test_image(self):
+        """Open a single test image by creating a temporary collection."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 'Open Test Image', '',
+            'Image Files (*.tif *.tiff *.jpg *.jpeg *.png *.img);;All Files (*)'
+        )
+
+        if file_path:
+            try:
+                # Create temporary collection for single image
+                temp_collection_path = self.create_single_image_collection(file_path)
+
+                # Load using existing collection workflow
+                self.load_collection_from_path(temp_collection_path)
+
+                # Clean up temporary file when done (optional - could keep for debugging)
+                # import os
+                # os.unlink(temp_collection_path)
+
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
+                self.status_bar.showMessage('Failed to load test image')
+
+    def create_single_image_collection(self, image_path):
+        """Create a temporary collection TOML for a single image."""
+        # Generate collection name from image filename
+        image_name = Path(image_path).stem
+
+        # Create collection data structure
+        collection_data = {
+            'collection': {
+                'name': f'Single Image - {image_name}',
+                'description': f'Temporary collection for single image: {image_name}',
+                'version': '1.0'
+            },
+            'imagery': [
+                {
+                    'name': image_name,
+                    'path': str(Path(image_path).absolute()),
+                    'source_type': 'test',
+                    'description': f'Single test image: {image_name}'
+                }
+            ]
+        }
+
+        # Create temporary TOML file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
+            toml_dump(collection_data, f)
+            temp_path = f.name
+
+        logging.info(f"Created temporary collection: {temp_path}")
+        return temp_path
 
     def post_init(self):
         """Post-initialization tasks."""

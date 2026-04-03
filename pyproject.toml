@@ -29,8 +29,8 @@ classifiers = [
 requires-python = ">=3.12"
 dependencies = [
     "QtPy>=2.4.1",
-    "PyQt6>=6.6.0",
-    "PyQt6-WebEngine>=6.6.0",
+    "PyQt6>=6.4.0",
+    "PyQt6-WebEngine>=6.4.0",
     "rasterio>=1.3.0",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
@@ -39,6 +39,7 @@ dependencies = [
     "requests>=2.31.0",
     "matplotlib>=3.7.0",
     "folium>=0.14.0",
+    "tomli-w>=1.1.0",
 ]
 
 [tool.setuptools.dynamic]
@@ -92,6 +93,7 @@ where = ["src"]
     "*.svg",
     "*.ui",
     "*.qrc",
+    "*.py",  # Include generated resource files
 ]
 
 [tool.black]

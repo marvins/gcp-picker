@@ -5,9 +5,14 @@ This script runs during the build process and generates a _version.py file
 containing version, build date, and git commit hash.
 """
 
+import logging
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
 
 
 def get_git_hash() -> str:
@@ -35,18 +40,18 @@ def generate_version_file():
     # Read version from pyproject.toml
     pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
     version = "1.0.0"  # Default
-    
+
     if pyproject_path.exists():
         import tomllib
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
             version = data.get("project", {}).get("version", version)
-    
+
     git_hash = get_git_hash()
     build_date = get_build_date()
-    
+
     version_content = f'''"""
-Version information for GCP Picker
+Version information for Pointy-McPointface
 
 This file is auto-generated during build - do not edit manually.
 """
@@ -64,18 +69,18 @@ def get_version_info() -> dict:
         "git_hash": __git_hash__,
     }}
 '''
-    
-    # Write to src/gcp_picker/_version.py
-    version_file_path = Path(__file__).parent.parent / "src" / "gcp_picker" / "_version.py"
+
+    # Write to src/pointy/_version.py
+    version_file_path = Path(__file__).parent.parent / "src" / "pointy" / "_version.py"
     version_file_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with open(version_file_path, "w") as f:
         f.write(version_content)
-    
-    print(f"Generated version file: {version_file_path}")
-    print(f"  Version: {version}")
-    print(f"  Build date: {build_date}")
-    print(f"  Git hash: {git_hash}")
+
+    logger.info(f"Generated version file: {version_file_path}")
+    logger.info(f"  Version: {version}")
+    logger.info(f"  Build date: {build_date}")
+    logger.info(f"  Git hash: {git_hash}")
 
 
 if __name__ == "__main__":
