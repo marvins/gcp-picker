@@ -281,16 +281,46 @@ class GCP_Manager(QWidget):
         row_position = self.gcp_table.rowCount()
         self.gcp_table.insertRow(row_position)
 
-        # Set the pending point data
+        # Set the pending point data - we have test coordinates
         self.gcp_table.setItem(row_position, 0, QTableWidgetItem("PENDING"))
         self.gcp_table.setItem(row_position, 1, QTableWidgetItem(f"{x:.1f}"))
         self.gcp_table.setItem(row_position, 2, QTableWidgetItem(f"{y:.1f}"))
-        self.gcp_table.setItem(row_position, 3, QTableWidgetItem("--"))
-        self.gcp_table.setItem(row_position, 4, QTableWidgetItem("--"))
-        self.gcp_table.setItem(row_position, 5, QTableWidgetItem("--"))
+        self.gcp_table.setItem(row_position, 3, QTableWidgetItem("--"))  # Ref X unknown
+        self.gcp_table.setItem(row_position, 4, QTableWidgetItem("--"))  # Ref Y unknown
+        self.gcp_table.setItem(row_position, 5, QTableWidgetItem("--"))  # Lon unknown
+        self.gcp_table.setItem(row_position, 6, QTableWidgetItem("--"))  # Lat unknown
 
         # Style the pending row
-        for col in range(6):
+        for col in range(7):  # Updated to 7 columns
+            item = self.gcp_table.item(row_position, col)
+            if item:
+                item.setBackground(QColor(255, 200, 200))  # Light red background
+                item.setForeground(QColor(150, 0, 0))  # Dark red text
+
+        # Update count to include pending
+        count = len(self.gcps)
+        self.count_label.setText(f"{count} GCP{'s' if count != 1 else ''} + 1 pending")
+
+    def show_pending_reference_point(self, x: float, y: float, lon: float, lat: float):
+        """Show a pending reference point in the GCP table."""
+        # Remove any existing pending point row
+        self.clear_pending_point()
+
+        # Add a special row for the pending point
+        row_position = self.gcp_table.rowCount()
+        self.gcp_table.insertRow(row_position)
+
+        # Set the pending point data - we have reference coordinates
+        self.gcp_table.setItem(row_position, 0, QTableWidgetItem("PENDING"))
+        self.gcp_table.setItem(row_position, 1, QTableWidgetItem("--"))  # Test X unknown
+        self.gcp_table.setItem(row_position, 2, QTableWidgetItem("--"))  # Test Y unknown
+        self.gcp_table.setItem(row_position, 3, QTableWidgetItem(f"{x:.1f}"))
+        self.gcp_table.setItem(row_position, 4, QTableWidgetItem(f"{y:.1f}"))
+        self.gcp_table.setItem(row_position, 5, QTableWidgetItem(f"{lon:.6f}"))
+        self.gcp_table.setItem(row_position, 6, QTableWidgetItem(f"{lat:.6f}"))
+
+        # Style the pending row
+        for col in range(7):  # Updated to 7 columns
             item = self.gcp_table.item(row_position, col)
             if item:
                 item.setBackground(QColor(255, 200, 200))  # Light red background

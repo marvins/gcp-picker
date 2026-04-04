@@ -16,6 +16,9 @@
 Graphics Image View - Interactive image display using QGraphicsView framework
 """
 
+# Python Standard Libraries
+import logging
+
 #  Third-Party Libraries
 import numpy as np
 from qtpy.QtCore import QPoint, QPointF, Qt, Signal
@@ -151,7 +154,10 @@ class Graphics_Image_View(QGraphicsView):
                     return
 
             # Emit point clicked signal in image coordinates
-            self.point_clicked.emit(int(scene_pos.x()), int(scene_pos.y()))
+            # Convert scene coordinates to image coordinates
+            img_x = scene_pos.x()
+            img_y = scene_pos.y()
+            self.point_clicked.emit(int(img_x), int(img_y))
 
         super().mousePressEvent(event)
 

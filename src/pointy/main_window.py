@@ -297,19 +297,34 @@ class Main_Window(QMainWindow):
 
     def on_reference_point_selected(self, x, y, lon, lat):
         """Handle reference point selection."""
-        print(f"🎯 DEBUG: Reference point selected at ({lon:.6f}, {lat:.6f})")
+        # Check if GCP selection is locked
+        lock_state = self.gcp_panel.is_locked()
+        logging.debug(f"Reference point selection, lock state: {lock_state}")
+        if lock_state:
+            self.status_bar.showMessage('GCP selection is locked - unlock to select points')
+            return
+
+        logging.debug(f"Reference point selected at ({lon:.6f}, {lat:.6f})")
         self.gcp_processor.set_pending_reference_point(x, y, lon, lat)
         self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
         self.update_reference_status(lat=lat, lon=lon)
 
+        # Show pending reference point in GCP panel
+        self.gcp_manager.show_pending_reference_point(x, y, lon, lat)
+
         # Auto-create GCP if test point is also pending
         if self.gcp_processor.has_pending_test_point():
-            print(f"🎯 DEBUG: Auto-creating GCP (reference point second)")
+            logging.debug("Auto-creating GCP (reference point second)")
             self.create_gcp_from_pending_points()
 
     def on_test_point_selected(self, x, y):
         """Handle test image point selection."""
-        print(f"🎯 DEBUG: Test point selected at ({x}, {y})")
+        # Check if GCP selection is locked
+        lock_state = self.gcp_panel.is_locked()
+        if lock_state:
+            self.status_bar.showMessage('GCP selection is locked - unlock to select points')
+            return
+
         self.gcp_processor.set_pending_test_point(x, y)
         self.status_bar.showMessage(f'Test point selected: ({x:.1f}, {y:.1f})')
         self.update_test_status(x=x, y=y)
@@ -322,7 +337,6 @@ class Main_Window(QMainWindow):
 
         # Auto-create GCP if reference point is also pending
         if self.gcp_processor.has_pending_reference_point():
-            print(f"🎯 DEBUG: Auto-creating GCP (test point second)")
             self.create_gcp_from_pending_points()
 
     def on_test_image_loaded(self, image_path):
@@ -342,6 +356,109 @@ class Main_Window(QMainWindow):
         view_panel = self.sidebar.get_view_control_panel()
         if view_panel.is_auto_stretch():
             self.test_viewer.set_auto_stretch(True)
+
+    def on_reference_loaded(self, reference_info):
+        """Handle reference source loading."""
+        self.gcp_processor.set_reference_info(reference_info)
+        self.status_bar.showMessage(f'Reference loaded: {reference_info.get("name", "Unknown")}')
+
+    def update_reference_status(self, zoom_level=None, lat=None, lon=None):
+        """Update reference viewer status bar."""
+        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
+        lat_text = f"Lat: {lat:.6f}" if lat else "Lat: N/A"
+        lon_text = f"Lon: {lon:.6f}" if lon else "Lon: N/A"
+        self.status_bar.showMessage(f"Reference {zoom_text} | {lat_text} | {lon_text}")
+
+    def update_test_status(self, zoom_level=None, x=None, y=None):
+        """Update test viewer status bar."""
+        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
+        x_text = f"X: {x:.1f}" if x is not None else "X: N/A"
+        y_text = f"Y: {y:.1f}" if y is not None else "Y: N/A"
+        self.status_bar.showMessage(f"Test {zoom_text} | {x_text} | {y_text}")
+
+    def save_gcps(self):
+        """Save GCPs to file."""
+        if not self.gcp_processor.has_gcps():
+            QMessageBox.information(self, 'Info', 'No GCPs to save')
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 'Save GCPs', '',
+            'GCP Files (*.gcp *.txt);;All Files (*)'
+        )
+
+        if file_path:
+            try:
+                self.gcp_processor.save_gcps(file_path)
+                self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to file')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
+                self.status_bar.showMessage('Failed to save GCPs')
+
+    def export_gcps(self):
+        """Export GCPs to file."""
+        if not self.gcp_processor.has_gcps():
+            QMessageBox.information(self, 'Info', 'No GCPs to export')
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, 'Export GCPs', '',
+            'GCP Files (*.gcp *.txt);;CSV Files (*.csv);;All Files (*)'
+        )
+
+        if file_path:
+            try:
+                self.gcp_processor.save_gcps(file_path)
+                self.status_bar.showMessage(f'Exported {self.gcp_processor.gcp_count()} GCPs to file')
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to export GCPs:\n{str(e)}')
+                self.status_bar.showMessage('Failed to export GCPs')
+
+    def load_gcps(self):
+        """Load GCPs from file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, 'Load GCPs', '',
+            'GCP Files (*.gcp *.txt);;All Files (*)'
+        )
+
+        if file_path:
+            try:
+                self.gcp_processor.load_gcps(file_path)
+                self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
+                self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from file')
+
+                # Trigger orthorectification if enabled
+                if self.ortho_toggle_action.isChecked():
+                    self.perform_orthorectification()
+
+            except Exception as e:
+                QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
+                self.status_bar.showMessage('Failed to load GCPs')
+
+    def clear_all_gcps(self):
+        """Clear all GCPs."""
+        reply = QMessageBox.question(
+            self, 'Confirm', 'Clear all ground control points?',
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            # Clear GCP processor
+            if hasattr(self.gcp_processor, 'clear_gcps'):
+                self.gcp_processor.clear_gcps()
+
+            # Clear GCP manager widget
+            if hasattr(self.gcp_manager, 'clear_all_gcps'):
+                self.gcp_manager.clear_all_gcps()
+                self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
+                self._pending_seed_location = None
+            else:
+                self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
+
+            # Apply DRA if auto-stretch is enabled
+            view_panel = self.sidebar.get_view_control_panel()
+            if view_panel.is_auto_stretch():
+                self.test_viewer.set_auto_stretch(True)
 
     def on_test_gcp_clicked(self, gcp_id):
         """Handle GCP point click in test viewer."""
@@ -473,10 +590,23 @@ class Main_Window(QMainWindow):
                 gcps,
                 self.test_viewer.get_rpc_data()
             )
+
+            # Get the projector from orthorectifier and set it
+            projector = self.orthorectifier.get_projector()
+            if projector:
+                self.set_projector(projector)
+
+            self.status_bar.showMessage('Orthorectification completed')
+
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Orthorectification failed:\n{str(e)}')
             self.status_bar.showMessage('Orthorectification failed')
-            raise
+
+    def set_projector(self, projector):
+        """Set the projector for coordinate transformations."""
+        self.gcp_processor.set_projector(projector)
+        self.test_viewer.set_projector(projector)
+        # Reference viewer might also need projector in the future
 
     def _on_image_loaded_update_histogram(self, image_path):
         """Update histogram when image is loaded."""
@@ -561,6 +691,7 @@ class Main_Window(QMainWindow):
 
     def on_gcp_lock_changed(self, is_locked: bool):
         """Handle GCP panel lock state changes."""
+        logging.debug(f"Main window received lock change: {is_locked}")
         if is_locked:
             self.status_bar.showMessage('GCP selection is locked - points disabled')
         else:

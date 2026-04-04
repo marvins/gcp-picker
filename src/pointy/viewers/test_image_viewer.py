@@ -34,6 +34,7 @@ from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLab
                            QPushButton)
 
 #  Project Libraries
+from pointy.core.coordinate import Pixel, Geographic
 from pointy.core.qt_async_image_loader import Qt_Async_Image_Loader, Loading_Indicator_Widget
 from pointy.widgets.graphics_image_view import Graphics_Image_View
 
@@ -401,13 +402,42 @@ class Test_Image_Viewer(QWidget):
         if self.current_image is None:
             return
 
-        # Convert pixel coordinates to image coordinates
-        img_x, img_y = self.image_view.pixel_to_image_coords(x, y)
+        # Convert coordinates using projector if available
+        img_x, img_y = self.convert_coordinates(x, y)
 
         # Emit signal
         self.point_selected.emit(img_x, img_y)
 
         self.status_label.setText(f"Point selected: ({img_x:.1f}, {img_y:.1f})")
+
+    def set_projector(self, projector):
+        """Set the projector for coordinate transformations."""
+        self._projector = projector
+
+    def convert_coordinates(self, x, y):
+        """Convert coordinates using projector if available."""
+        # Check if we have a projector available
+        if hasattr(self, '_projector') and self._projector is not None:
+            try:
+                # Convert through projector pipeline
+
+                # Convert scene coordinates to source pixel
+                source_pixel = Pixel.create(x, y)
+
+                # Transform to geographic coordinates
+                geographic = self._projector.source_to_geographic(source_pixel)
+
+                # Transform to destination pixel (orthorectified)
+                dest_pixel = self._projector.geographic_to_destination(geographic)
+
+                return dest_pixel.x_px, dest_pixel.y_px
+
+            except Exception as e:
+                # Fall back to passthrough on error
+                return x, y
+        else:
+            # No projector - passthrough (Identity mode)
+            return x, y
 
     def on_gcp_point_clicked(self, gcp_id):
         """Handle GCP point click."""

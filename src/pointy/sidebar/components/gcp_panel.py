@@ -16,6 +16,9 @@
 GCP Panel - Ground Control Point management panel
 """
 
+# Python Standard Libraries
+import logging
+
 # Third-Party Libraries
 from qtpy.QtCore import Signal, Qt, QSize
 from qtpy.QtGui import QFont, QTextCursor
@@ -43,8 +46,12 @@ class GCP_Panel(QWidget):
 
     def __init__(self):
         super().__init__()
-        self._is_locked = False
+        self._is_locked = True  # Start locked for safety
         self.setup_ui()
+        # Set initial button state to locked
+        self.lock_button.setChecked(True)
+        self.lock_button.setText("🔒")
+        self.lock_button.setToolTip("GCP selection is locked. Click to unlock.")
 
     def setup_ui(self):
         """Setup the GCP panel UI."""
@@ -116,6 +123,7 @@ class GCP_Panel(QWidget):
     def _toggle_lock(self, checked: bool):
         """Toggle the lock state."""
         self._is_locked = checked
+        logging.debug(f"Lock toggled to {'LOCKED' if checked else 'UNLOCKED'}")
         if checked:
             self.lock_button.setText("🔒")
             self.lock_button.setToolTip("GCP selection is locked. Click to unlock.")
@@ -123,6 +131,7 @@ class GCP_Panel(QWidget):
             self.lock_button.setText("🔓")
             self.lock_button.setToolTip("Lock GCP selection to prevent accidental clicks")
         self.lock_state_changed.emit(self._is_locked)
+        logging.debug(f"Lock state changed signal emitted: {self._is_locked}")
 
     def _on_gcp_selected(self, gcp_id: int):
         """Handle GCP selection, respecting lock state."""
