@@ -593,7 +593,6 @@ class Leaflet_Reference_Viewer(QWidget):
                 if elevation is not None:
                     # Update cursor signal with real altitude
                     self.cursor_moved.emit(lat, lon, elevation)
-                    self.logger.debug(f"Elevation query successful: {elevation:.1f}m at ({lat:.4f}, {lon:.4f})")
                 else:
                     # No elevation data available, emit with 0
                     self.cursor_moved.emit(lat, lon, 0.0)

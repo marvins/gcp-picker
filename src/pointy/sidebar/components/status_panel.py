@@ -1,11 +1,27 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    status_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Status Panel - Application status and information display
 """
 
+# Third-Party Libraries
+from qtpy.QtGui import QFont, QTextCursor
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QLabel,
                            QTextEdit, QFrame)
-from qtpy.QtGui import QFont, QTextCursor
 
+# Project Libraries
 from pointy.widgets.status_panel import Status_Panel as Original_Status_Panel
 
 

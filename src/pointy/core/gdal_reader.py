@@ -1,11 +1,27 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gdal_reader.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 GDAL Reader - Read various raster formats using rasterio
 """
 
+# Python Standard Libraries
 from pathlib import Path
 from typing import Tuple, Dict, Any
-import numpy as np
 
+# Third-Party Libraries
+import numpy as np
 import rasterio
 
 class GDALReader:

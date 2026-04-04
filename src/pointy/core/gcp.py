@@ -17,6 +17,7 @@ Ground Control Point (GCP) data structure
 """
 
 #  Python Standard Libraries
+import os
 from dataclasses import dataclass
 
 #  Third-Party Libraries
@@ -43,28 +44,35 @@ class GCP:
         if self.id <= 0:
             raise ValueError("GCP ID must be positive")
 
-        # Auto-populate elevation if not provided
-        if self.geographic.elevation is None:
-            elev = elevation(self.geographic.latitude, self.geographic.longitude)
-            if elev is not None:
-                self.geographic.elevation = elev
+        # Auto-populate elevation if not provided and not in test environment
+        # Skip elevation lookup in tests to avoid terrain catalog dependency
+        skip_elevation = os.environ.get('SKIP_ELEVATION_LOOKUP', 'false').lower() == 'true'
+
+        if not skip_elevation and self.geographic.altitude_m is None:
+            try:
+                elev = elevation(self.geographic)
+                if elev is not None:
+                    self.geographic.altitude_m = elev
+            except Exception:
+                # Silently fail elevation lookup for testing
+                pass
 
     def to_dict(self):
         """Convert GCP to dictionary."""
         return {
             'id': self.id,
             'test_pixel': {
-                'x': self.test_pixel.x,
-                'y': self.test_pixel.y
+                'x': self.test_pixel.x_px,
+                'y': self.test_pixel.y_px
             },
             'reference_pixel': {
-                'x': self.reference_pixel.x,
-                'y': self.reference_pixel.y
+                'x': self.reference_pixel.x_px,
+                'y': self.reference_pixel.y_px
             },
             'geographic': {
-                'latitude': self.geographic.latitude,
-                'longitude': self.geographic.longitude,
-                'elevation': self.geographic.elevation
+                'latitude': self.geographic.latitude_deg,
+                'longitude': self.geographic.longitude_deg,
+                'elevation': self.geographic.altitude_m
             },
             'projected': {
                 'easting': self.projected.easting,

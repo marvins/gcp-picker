@@ -42,6 +42,9 @@ class GCP_Processor:
         self.pending_test_point = None
         self.pending_reference_point = None
 
+        # Projector for coordinate transformations
+        self.projector = None
+
     def add_gcp(self, gcp: GCP):
         """Add a GCP to the collection."""
         self.gcps[gcp.id] = gcp
@@ -106,6 +109,32 @@ class GCP_Processor:
         """Get pending reference point."""
         return self.pending_reference_point
 
+    def set_projector(self, projector):
+        """Set the projector for coordinate transformations."""
+        self.projector = projector
+
+    def get_projector(self):
+        """Get the current projector."""
+        return self.projector
+
+    def transform_test_coordinates(self, x: float, y: float) -> tuple[float, float]:
+        """Transform test coordinates using current projector."""
+        if self.projector is None:
+            return x, y
+
+        try:
+            # Convert test pixel to geographic coordinates
+            test_pixel = Pixel.create(x, y)
+            geographic = self.projector.source_to_geographic(test_pixel)
+
+            # Convert geographic back to destination pixel (orthorectified)
+            dest_pixel = self.projector.geographic_to_destination(geographic)
+
+            return dest_pixel.x_px, dest_pixel.y_px
+        except Exception as e:
+            # If transformation fails, return original coordinates
+            return x, y
+
     def clear_pending_points(self):
         """Clear pending points."""
         self.pending_test_point = None
@@ -124,8 +153,14 @@ class GCP_Processor:
         ref_pixel = Pixel.create(ref_x, ref_y)
 
         # Get elevation for the geographic coordinate
-        elev = get_elevation(lat, lon)
-        geographic = Geographic.create(lat, lon, elev)
+        geographic = Geographic.create(lat, lon)
+        try:
+            elev = get_elevation(geographic)
+            if elev is not None:
+                geographic.altitude_m = elev
+        except Exception:
+            # Elevation lookup failed, continue without elevation
+            pass
 
         gcp = GCP(
             id=self.next_gcp_id,

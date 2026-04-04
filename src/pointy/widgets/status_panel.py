@@ -1,9 +1,24 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    status_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Status Panel Widget - Display application status
 """
 
-from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame
+# Third-Party Libraries
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame
 
 class Status_Panel(QWidget):
     """Status panel for displaying application status."""

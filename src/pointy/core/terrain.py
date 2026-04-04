@@ -218,7 +218,6 @@ class GeoTIFF_Elevation_Source(Elevation_Source):
                 self.epsg_code = None
 
             self._loaded = True
-            self.logger.debug(f"Loaded GeoTIFF: {self.file_path}")
 
         except ImportError as e:
             raise ImportError(f"rasterio is required for GeoTIFF loading: {e}")
@@ -352,7 +351,6 @@ class Terrain_Catalog(Elevation_Source):
             try:
                 source = GeoTIFF_Elevation_Source(tif_file)
                 self.sources.append(source)
-                self.logger.debug(f"Found GeoTIFF: {tif_file}")
             except Exception as e:
                 self.logger.warning(f"Could not load GeoTIFF {tif_file}: {e}")
 

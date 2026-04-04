@@ -1,12 +1,26 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    collection_nav_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Collection Navigation Panel - Sidebar widget for collection image navigation
 """
 
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QFrame)
+# Third-Party Libraries
 from qtpy.QtCore import Signal, Qt
 from qtpy.QtGui import QFont
-
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                           QPushButton, QFrame)
 
 class Collection_Nav_Panel(QWidget):
     """Collection navigation panel with image navigation buttons."""

@@ -261,6 +261,7 @@ class Main_Window(QMainWindow):
         self.test_viewer.image_loaded.connect(self.on_test_image_loaded)
         self.test_viewer.cursor_moved.connect(self.on_test_cursor_moved)
         self.test_viewer.gcp_point_clicked.connect(self.on_test_gcp_clicked)
+        self.test_viewer.point_selected.connect(self.on_test_point_selected)
         self.test_viewer.image_loaded.connect(self._on_image_loaded_update_histogram)
         self.test_viewer.image_adjusted.connect(self._on_image_adjusted_update_histogram)
 
@@ -296,15 +297,33 @@ class Main_Window(QMainWindow):
 
     def on_reference_point_selected(self, x, y, lon, lat):
         """Handle reference point selection."""
+        print(f"🎯 DEBUG: Reference point selected at ({lon:.6f}, {lat:.6f})")
         self.gcp_processor.set_pending_reference_point(x, y, lon, lat)
         self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
         self.update_reference_status(lat=lat, lon=lon)
 
+        # Auto-create GCP if test point is also pending
+        if self.gcp_processor.has_pending_test_point():
+            print(f"🎯 DEBUG: Auto-creating GCP (reference point second)")
+            self.create_gcp_from_pending_points()
+
     def on_test_point_selected(self, x, y):
         """Handle test image point selection."""
+        print(f"🎯 DEBUG: Test point selected at ({x}, {y})")
         self.gcp_processor.set_pending_test_point(x, y)
         self.status_bar.showMessage(f'Test point selected: ({x:.1f}, {y:.1f})')
         self.update_test_status(x=x, y=y)
+
+        # Show red circle on test image
+        self.test_viewer.image_view.set_pending_test_point(int(x), int(y))
+
+        # Show pending point in GCP panel
+        self.gcp_manager.show_pending_test_point(x, y)
+
+        # Auto-create GCP if reference point is also pending
+        if self.gcp_processor.has_pending_reference_point():
+            print(f"🎯 DEBUG: Auto-creating GCP (test point second)")
+            self.create_gcp_from_pending_points()
 
     def on_test_image_loaded(self, image_path):
         """Handle test image loading."""
@@ -551,9 +570,12 @@ class Main_Window(QMainWindow):
         """Handle GCP addition."""
         self.gcp_processor.add_gcp(gcp)
 
-        # Add visual markers
-        self.test_viewer.add_gcp_point(gcp.test_x, gcp.test_y, gcp.id)
-        self.reference_viewer.add_gcp_point(gcp.ref_x, gcp.ref_y, gcp.id)
+        # Add visual markers using projector for test image
+        transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(
+            gcp.test_pixel.x_px, gcp.test_pixel.y_px
+        )
+        self.test_viewer.image_view.add_gcp_point(gcp.id, int(transformed_x), int(transformed_y))
+        self.reference_viewer.add_gcp_point(gcp.reference_pixel.x_px, gcp.reference_pixel.y_px, gcp.id)
 
         self.status_bar.showMessage(f'Added GCP {gcp.id}')
 
@@ -576,8 +598,12 @@ class Main_Window(QMainWindow):
         """Handle GCP selection."""
         gcp = self.gcp_processor.get_gcp(gcp_id)
         if gcp:
-            self.test_viewer.highlight_gcp_point(gcp.test_x, gcp.test_y)
-            self.reference_viewer.highlight_gcp_point(gcp.ref_x, gcp.ref_y)
+            # Transform coordinates using projector for test image
+            transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(
+                gcp.test_pixel.x_px, gcp.test_pixel.y_px
+            )
+            self.test_viewer.highlight_gcp_point(int(transformed_x), int(transformed_y))
+            self.reference_viewer.highlight_gcp_point(gcp.reference_pixel.x_px, gcp.reference_pixel.y_px)
             self.status_panel.update_gcp_info(gcp)
 
     def on_min_pixel_changed(self, value: int):
@@ -606,7 +632,6 @@ class Main_Window(QMainWindow):
 
     def on_reference_cursor_moved(self, lat: float, lon: float, alt: float | None = None):
         """Handle cursor movement over reference viewer."""
-        logging.debug(f"Reference cursor moved: lat={lat}, lon={lon}, alt={alt}")
         self.sidebar.get_metadata_panel().update_reference_metadata(lat, lon, alt)
 
     def on_test_cursor_moved(self, x: int, y: int, pixel_value: str | None = None,
@@ -627,6 +652,20 @@ class Main_Window(QMainWindow):
         if test_point and ref_point:
             gcp = self.gcp_processor.create_gcp_from_pending()
             self.gcp_manager.add_gcp(gcp)
+
+            # Add GCP to test viewer display using projector
+            test_x, test_y = test_point
+            transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(test_x, test_y)
+            self.test_viewer.image_view.add_gcp_point(gcp.id, int(transformed_x), int(transformed_y))
+
+            # Clear pending test point display
+            self.test_viewer.image_view.clear_pending_test_point()
+
+            # Clear pending point from GCP panel
+            self.gcp_manager.clear_pending_point()
+
+            # Provide user feedback
+            self.status_bar.showMessage(f'GCP {gcp.id} created automatically')
 
             # Clear pending points
             self.gcp_processor.clear_pending_points()

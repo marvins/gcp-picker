@@ -92,7 +92,7 @@ class GCP_Manager(QWidget):
         button_layout = QHBoxLayout()
 
         self.add_btn = QPushButton("Add GCP")
-        self.add_btn.clicked.connect(self.add_gcp_from_pending)
+        self.add_btn.clicked.connect(self.manual_add_gcp)
         button_layout.addWidget(self.add_btn)
 
         self.remove_btn = QPushButton("Remove")
@@ -143,20 +143,20 @@ class GCP_Manager(QWidget):
         self.gcp_table.setItem(row, 0, id_item)
 
         # Test coordinates
-        test_x_item = QTableWidgetItem(f"{gcp.test_x:.2f}")
-        test_y_item = QTableWidgetItem(f"{gcp.test_y:.2f}")
+        test_x_item = QTableWidgetItem(f"{gcp.test_pixel.x_px:.2f}")
+        test_y_item = QTableWidgetItem(f"{gcp.test_pixel.y_px:.2f}")
         self.gcp_table.setItem(row, 1, test_x_item)
         self.gcp_table.setItem(row, 2, test_y_item)
 
         # Reference coordinates
-        ref_x_item = QTableWidgetItem(f"{gcp.ref_x:.2f}")
-        ref_y_item = QTableWidgetItem(f"{gcp.ref_y:.2f}")
+        ref_x_item = QTableWidgetItem(f"{gcp.reference_pixel.x_px:.2f}")
+        ref_y_item = QTableWidgetItem(f"{gcp.reference_pixel.y_px:.2f}")
         self.gcp_table.setItem(row, 3, ref_x_item)
         self.gcp_table.setItem(row, 4, ref_y_item)
 
         # Geographic coordinates
-        lon_item = QTableWidgetItem(f"{gcp.longitude:.6f}")
-        lat_item = QTableWidgetItem(f"{gcp.latitude:.6f}")
+        lon_item = QTableWidgetItem(f"{gcp.geographic.longitude_deg:.6f}")
+        lat_item = QTableWidgetItem(f"{gcp.geographic.latitude_deg:.6f}")
         self.gcp_table.setItem(row, 5, lon_item)
         self.gcp_table.setItem(row, 6, lat_item)
 
@@ -212,7 +212,7 @@ class GCP_Manager(QWidget):
         current_row = self.gcp_table.currentRow()
         if current_row >= 0:
             gcp_id_item = self.gcp_table.item(current_row, 0)
-            if gcp_id_item:
+            if gcp_id_item and gcp_id_item.text() != "PENDING":
                 return int(gcp_id_item.text())
         return None
 
@@ -234,6 +234,10 @@ class GCP_Manager(QWidget):
         if not gcp_id_item:
             return
 
+        # Skip pending point rows
+        if gcp_id_item.text() == "PENDING":
+            return
+
         gcp_id = int(gcp_id_item.text())
         if gcp_id not in self.gcps:
             return
@@ -243,17 +247,17 @@ class GCP_Manager(QWidget):
         try:
             # Update GCP based on column
             if item.column() == 1:  # Test X
-                gcp.test_x = float(item.text())
+                gcp.test_pixel.x_px = float(item.text())
             elif item.column() == 2:  # Test Y
-                gcp.test_y = float(item.text())
+                gcp.test_pixel.y_px = float(item.text())
             elif item.column() == 3:  # Ref X
-                gcp.ref_x = float(item.text())
+                gcp.reference_pixel.x_px = float(item.text())
             elif item.column() == 4:  # Ref Y
-                gcp.ref_y = float(item.text())
+                gcp.reference_pixel.y_px = float(item.text())
             elif item.column() == 5:  # Lon
-                gcp.longitude = float(item.text())
+                gcp.geographic.longitude_deg = float(item.text())
             elif item.column() == 6:  # Lat
-                gcp.latitude = float(item.text())
+                gcp.geographic.latitude_deg = float(item.text())
 
             # Emit update signal
             self.gcp_updated.emit(gcp)
@@ -262,10 +266,52 @@ class GCP_Manager(QWidget):
             # Revert to original value if invalid
             self.set_table_row(row, gcp)
 
-    def add_gcp_from_pending(self):
-        """Add GCP from pending points (placeholder for future implementation)."""
-        # This would be connected to pending points from the main window
+    def manual_add_gcp(self):
+        """Manually add a GCP (placeholder for manual entry)."""
+        # This could open a dialog for manual GCP entry
+        # For now, just emit a signal that could be connected to main window
         pass
+
+    def show_pending_test_point(self, x: float, y: float):
+        """Show a pending test point in the GCP table."""
+        # Remove any existing pending point row
+        self.clear_pending_point()
+
+        # Add a special row for the pending point
+        row_position = self.gcp_table.rowCount()
+        self.gcp_table.insertRow(row_position)
+
+        # Set the pending point data
+        self.gcp_table.setItem(row_position, 0, QTableWidgetItem("PENDING"))
+        self.gcp_table.setItem(row_position, 1, QTableWidgetItem(f"{x:.1f}"))
+        self.gcp_table.setItem(row_position, 2, QTableWidgetItem(f"{y:.1f}"))
+        self.gcp_table.setItem(row_position, 3, QTableWidgetItem("--"))
+        self.gcp_table.setItem(row_position, 4, QTableWidgetItem("--"))
+        self.gcp_table.setItem(row_position, 5, QTableWidgetItem("--"))
+
+        # Style the pending row
+        for col in range(6):
+            item = self.gcp_table.item(row_position, col)
+            if item:
+                item.setBackground(QColor(255, 200, 200))  # Light red background
+                item.setForeground(QColor(150, 0, 0))  # Dark red text
+
+        # Update count to include pending
+        count = len(self.gcps)
+        self.count_label.setText(f"{count} GCP{'s' if count != 1 else ''} + 1 pending")
+
+    def clear_pending_point(self):
+        """Clear any pending point from the table."""
+        # Find and remove the pending row
+        for row in range(self.gcp_table.rowCount()):
+            item = self.gcp_table.item(row, 0)
+            if item and item.text() == "PENDING":
+                self.gcp_table.removeRow(row)
+                break
+
+        # Update count
+        count = len(self.gcps)
+        self.count_label.setText(f"{count} GCP{'s' if count != 1 else ''}")
 
     def update_count(self):
         """Update the GCP count label."""

@@ -1,3 +1,17 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gdal_manager.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 GDAL Manager - Centralized raster operations interface using rasterio
 
@@ -8,14 +22,17 @@ Provides a singleton manager for all raster operations with:
 - Unified API for raster operations
 """
 
+# Python Standard Libraries
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from dataclasses import dataclass
 
+# Third-Party Libraries
 import numpy as np
 import rasterio
 
+# Project Libraries
 from pointy.core.constants import (
     SUPPORTED_IMAGE_EXTENSIONS,
     SUPPORTED_REFERENCE_EXTENSIONS,

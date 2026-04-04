@@ -63,7 +63,6 @@ class Image_Load_Task(QRunnable):
 
         # Log thread info for debugging
         thread_id = threading.current_thread().ident
-        self.logger.debug(f"Starting image load in thread {thread_id}: {self.image_path}")
 
         try:
             self.logger.debug(f"Loading image: {self.image_path}")
@@ -266,21 +265,18 @@ class Loading_Indicator_Widget(QObject):
         }
 
         self.loading_started.emit(load_id, image_path)
-        self.logger.debug(f"Loading started: {image_path}")
 
     def on_load_completed(self, load_id: str, image_data: object, load_time: float):
         """Handle load completed signal."""
         if load_id in self._active_loads:
             del self._active_loads[load_id]
             self.loading_finished.emit(load_id)
-            self.logger.debug(f"Loading completed: {load_id}")
 
     def on_load_failed(self, load_id: str, image_path: str, error: str, load_time: float):
         """Handle load failed signal."""
         if load_id in self._active_loads:
             del self._active_loads[load_id]
             self.loading_finished.emit(load_id)
-            self.logger.debug(f"Loading failed: {image_path} - {error}")
 
     def _update_animation(self):
         """Update loading animation frame."""

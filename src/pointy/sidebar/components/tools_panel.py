@@ -1,11 +1,26 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    tools_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Tools Panel - Application tools and controls
 """
 
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QCheckBox, QComboBox, QGroupBox)
+# Third-Party Libraries
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QFont
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                           QPushButton, QCheckBox, QComboBox, QGroupBox)
 
 
 class Tools_Panel(QWidget):

@@ -1,12 +1,28 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    gcp_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 GCP Panel - Ground Control Point management panel
 """
 
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton, QToolBar, QSizePolicy, QTextEdit, QFrame)
+# Third-Party Libraries
 from qtpy.QtCore import Signal, Qt, QSize
 from qtpy.QtGui import QFont, QTextCursor
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                           QPushButton, QToolBar, QSizePolicy, QTextEdit, QFrame)
 
+# Project Libraries
 from pointy.widgets.gcp_manager import GCP_Manager
 
 

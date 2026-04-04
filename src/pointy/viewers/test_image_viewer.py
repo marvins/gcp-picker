@@ -507,6 +507,11 @@ class Test_Image_Viewer(QWidget):
         self.max_pixel = 255
         self.brightness = 0.0
         self.contrast = 1.0
+
+        # Reset zoom to fit entire image
+        self.image_view.reset_zoom()
+
+        # Apply adjustments
         self.apply_image_adjustments()
 
     def apply_image_adjustments(self):

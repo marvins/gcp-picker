@@ -12,16 +12,41 @@ A PyQt6-based GUI application for selecting ground control points between test i
 - **File I/O**: Save and load GCPs in multiple formats (JSON, CSV, text)
 - **Real-time Updates**: Automatic orthorectification when sufficient GCPs are available
 
+## TODO List
+
+### High Priority
+- [ ] Check and fix unsorted imports across codebase
+- [ ] Implement RPC_Projection class for Rational Polynomial Camera models
+- [ ] Implement TPS_Projection class for Thin Plate Spline transformations
+- [ ] Create integration tests for RPC and TPS projection types
+
+### Medium Priority
+- [ ] Add comprehensive error handling throughout Projector API
+- [ ] Implement model caching and persistence strategies
+- [ ] Add coordinate validation and boundary condition testing
+- [ ] Create GUI integration for Projector API selection
+- [ ] Add real-world data tests with actual imagery
+
+### Low Priority
+- [ ] Optimize performance for large GCP datasets
+- [ ] Add support for additional coordinate reference systems
+- [ ] Implement advanced interpolation methods
+- [ ] Create comprehensive documentation and examples
+
 ## Installation
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.14+ (for modern union syntax `|` and other features)
 - GDAL library (for geospatial raster support)
 
 ### Install Dependencies
 
 ```bash
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 # Install Python dependencies
 pip install -r requirements.txt
 
@@ -193,20 +218,9 @@ print(f"Available sources: {stats['sources']}")
 - **Error**: 404 Not Found → Check API endpoint URL
 
 ##### General Issues
-```bash
-# Test API key validity
-curl -G "https://maps.googleapis.com/maps/api/elevation/json" \
-  --data-urlencode "locations=40.7,-74.0" \
-  --data-urlencode "key=$GOOGLE_ELEVATION_API_KEY"
-
-# Test OpenTopography API
-curl -G "https://portal.opentopography.org/API/globaldem" \
-  --data-urlencode "lat=40.7" \
-  --data-urlencode "lon=-74.0" \
-  --data-urlencode "demtype=SRTMGL1" \
-  --data-urlencode "outputFormat=json" \
-  --data-urlencode "api_key=$OPENTOPOGRAPHY_API_KEY"
-```
+- **Missing Elevation Data**: Use SKIP_ELEVATION_LOOKUP=true for testing
+- **Import Errors**: Ensure GDAL is properly installed and configured
+- **Network Issues**: Check internet connectivity for WMS/WMTS services
 
 ## Usage
 
@@ -273,18 +287,26 @@ curl -G "https://portal.opentopography.org/API/globaldem" \
 ### Core Components
 
 - **MainWindow**: Main application window and layout
-- **TestImageViewer**: Left panel for test imagery
+- **TestImageViewer**: Left panel for test imagery with async loading
 - **ReferenceViewer**: Right panel for reference sources
 - **GCPManager**: GCP table and management interface
-- **Orthorectifier**: RPC-based orthorectification engine
+- **Projector API**: Modern coordinate transformation interface
+  - **Identity_Projection**: Pass-through transformations
+  - **Affine_Projection**: Matrix-based transformations
+  - **RPC_Projection**: Rational Polynomial Camera models (planned)
+  - **TPS_Projection**: Thin Plate Spline transformations (planned)
+- **Orthorectifier**: Legacy RPC-based orthorectification (being refactored)
 
 ### Data Flow
 
 1. User selects points in both viewers
-2. GCPProcessor creates GCP objects
+2. GCPProcessor creates GCP objects with coordinate validation
 3. GCPManager displays and manages GCPs
-4. Orthorectifier processes images when enabled
-5. Results displayed back in TestImageViewer
+4. Projector API performs coordinate transformations:
+   - source ↔ geographic ↔ destination mappings
+   - Roundtrip validation and precision checking
+   - Model fitting and optimization
+5. Results displayed back in TestImageViewer with async loading
 
 ## Dependencies
 
@@ -322,30 +344,65 @@ curl -G "https://portal.opentopography.org/API/globaldem" \
 pointy_mcpointface/
 ├── main.py                 # Application entry point
 ├── requirements.txt        # Python dependencies
+├── pyproject.toml          # Project configuration and dependencies
 ├── src/
 │   └── pointy/            # Main package directory
 │       ├── __init__.py
 │       ├── main_window.py     # Main application window
 │       ├── viewers/           # Image viewer components
-│       │   ├── test_image_viewer.py
+│       │   ├── test_image_viewer.py      # Async loading support
 │       │   └── reference_viewer.py
-│       ├── widgets/           # UI widgets
-│       │   ├── image_canvas.py
-│       │   ├── zoom_controls.py
-│       │   ├── gcp_manager.py
-│       │   └── status_panel.py
-│       └── core/              # Core functionality
-│           ├── gcp.py
-│           ├── gcp_processor.py
-│           ├── orthorectifier.py
-│           ├── wms_client.py
-│           └── gdal_reader.py
+│       ├── sidebar/           # Sidebar components
+│       │   ├── tabbed_sidebar.py          # Main sidebar container
+│       │   ├── components/
+│       │   │   ├── gcp_panel.py            # GCP management
+│       │   │   ├── status_panel.py         # Status display
+│       │   │   ├── metadata_panel.py       # Cursor metadata
+│       │   │   └── collection_nav_panel.py # Image navigation
+│       │   └── tools/
+│       ├── core/              # Core functionality
+│       │   ├── coordinate.py   # Coordinate system definitions
+│       │   ├── gcp.py          # Ground Control Point data structure
+│       │   ├── projector.py    # Modern Projector API
+│       │   ├── terrain.py      # Elevation data management
+│       │   ├── orthorectifier.py # Legacy orthorectification
+│       │   └── qt_async_image_loader.py # Async image loading
+│       └── data/              # Configuration and data files
+│           └── config/
+│               └── imagery_services.json
+├── test/                   # Test suite
+│   ├── unit/              # Unit tests
+│   │   ├── test_projector.py      # Projector API tests
+│   │   └── test_*.py
+│   └── integration/       # Integration tests
+│       └── test_camera_integration.py # Camera scenario tests
+├── ortho-logic.md         # Projector API design document
+├── refactoring_recommendations.md # Architecture improvements
 └── README.md
 ```
 
 ### Extending the Application
 
-- Add new reference source types in `ReferenceViewer`
-- Implement additional orthorectification methods in `Orthorectifier`
-- Add custom GCP validation in `GCP_Processor`
-- Extend file format support in `GCP_Processor`
+- **New Projection Types**: Implement RPC_Projection and TPS_Projection classes in `projector.py`
+- **Reference Sources**: Add new WMS/WMTS providers in `ReferenceViewer`
+- **Coordinate Systems**: Extend coordinate types in `coordinate.py`
+- **GCP Validation**: Add custom validation rules in `gcp.py`
+- **File Formats**: Extend I/O support in GCP management components
+- **UI Components**: Add new sidebar panels in `tabbed_sidebar.py`
+
+### Testing
+
+Run the test suite:
+```bash
+# Unit tests
+python -m pytest test/unit/
+
+# Integration tests
+python -m pytest test/integration/
+
+# All tests with coverage
+python -m pytest --cov=pointy
+
+# Skip elevation lookup for testing
+SKIP_ELEVATION_LOOKUP=true python -m pytest
+```

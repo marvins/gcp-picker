@@ -16,11 +16,9 @@
 Graphics Image View - Interactive image display using QGraphicsView framework
 """
 
-#  Python Standard Libraries
-
 #  Third-Party Libraries
 import numpy as np
-from qtpy.QtCore import QPoint, Qt, Signal
+from qtpy.QtCore import QPoint, QPointF, Qt, Signal
 from qtpy.QtGui import QColor, QFont, QMouseEvent, QPen, QPainter, QPixmap, QWheelEvent
 from qtpy.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
 
@@ -43,6 +41,7 @@ class Graphics_Image_View(QGraphicsView):
         self.pixmap_item = None
         self.gcp_points = {}  # gcp_id -> (x, y)
         self.highlighted_point = None
+        self.pending_test_point = None  # (x, y) for pending point
         self.georeferencing = None  # (transform, width, height)
 
         # Image metadata for histogram
@@ -75,9 +74,23 @@ class Graphics_Image_View(QGraphicsView):
             self.pixmap_item = QGraphicsPixmapItem(pixmap)
             self.scene.addItem(self.pixmap_item)
             self.scene.setSceneRect(self.pixmap_item.boundingRect())
+
+            # Fit image to view and calculate actual zoom factor
             self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+
+            # Calculate the actual zoom factor after fitInView
+            view_rect = self.rect()
+            item_rect = self.pixmap_item.boundingRect()
+
+            if item_rect.width() > 0 and item_rect.height() > 0:
+                zoom_x = view_rect.width() / item_rect.width()
+                zoom_y = view_rect.height() / item_rect.height()
+                self.zoom_factor = min(zoom_x, zoom_y)  # Keep aspect ratio
+            else:
+                self.zoom_factor = 1.0
         else:
             self.pixmap_item = None
+            self.zoom_factor = 1.0
 
         self.update()
 
@@ -251,37 +264,91 @@ class Graphics_Image_View(QGraphicsView):
         return self.zoom_factor
 
     def paintEvent(self, event):
-        """Override paint to draw GCP points."""
+        """Override paint to draw GCP points and pending test point."""
         super().paintEvent(event)
 
-        if not self.pixmap_item or not self.gcp_points:
+        if not self.pixmap_item:
             return
 
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Draw GCP points
-        for gcp_id, (x, y) in self.gcp_points.items():
-            # Convert scene coordinates to view coordinates
-            view_pos = self.mapFromScene(QPoint(x, y))
+        # Draw pending test point (red circle)
+        if self.pending_test_point:
+            x, y = self.pending_test_point
+            view_pos = self.mapFromScene(QPointF(x, y))
 
-            # Draw point
-            is_highlighted = (self.highlighted_point == gcp_id)
-            color = QColor(255, 0, 0) if is_highlighted else QColor(255, 255, 0)
-            painter.setPen(QPen(color, 2))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), 50))
-            painter.drawEllipse(view_pos, 12, 12)
+            # Draw red circle for pending point
+            painter.setPen(QPen(QColor(255, 0, 0), 3))  # Red, thicker
+            painter.setBrush(QColor(255, 0, 0, 70))  # Semi-transparent red
+            painter.drawEllipse(view_pos, 15, 15)  # Larger circle
 
             # Draw label
-            painter.setPen(QPen(color, 1))
-            painter.setFont(QFont("Arial", 8))
-            painter.drawText(view_pos + QPoint(15, -5), f"GCP{gcp_id}")
+            painter.setPen(QPen(QColor(255, 0, 0), 1))
+            painter.setFont(QFont("Arial", 10, QFont.Bold))
+            painter.drawText(view_pos + QPoint(20, -5), "PENDING")
+
+        # Draw GCP points
+        if self.gcp_points:
+            for gcp_id, (x, y) in self.gcp_points.items():
+                # Convert scene coordinates to view coordinates
+                view_pos = self.mapFromScene(QPointF(x, y))
+
+                # Draw point
+                is_highlighted = (self.highlighted_point == gcp_id)
+                color = QColor(255, 0, 0) if is_highlighted else QColor(255, 255, 0)
+                painter.setPen(QPen(color, 2))
+                painter.setBrush(QColor(color.red(), color.green(), color.blue(), 50))
+                painter.drawEllipse(view_pos, 12, 12)
+
+                # Draw label
+                painter.setPen(QPen(color, 1))
+                painter.setFont(QFont("Arial", 8))
+                painter.drawText(view_pos + QPoint(15, -5), f"GCP{gcp_id}")
 
     def set_image_data(self, image_data, bit_depth=8, dtype=np.uint8):
         """Set image data for histogram calculations."""
         self.original_image = image_data
         self.bit_depth = bit_depth
         self.dtype = dtype
+
+    def set_pending_test_point(self, x: int, y: int):
+        """Set a pending test point (will be drawn as red circle)."""
+        self.pending_test_point = (x, y)
+        self.update()
+
+    def clear_pending_test_point(self):
+        """Clear the pending test point."""
+        self.pending_test_point = None
+        self.update()
+
+    def reset_zoom(self):
+        """Reset zoom to fit the entire image in view."""
+        if not self.pixmap_item:
+            return
+
+        # Fit image to view and calculate actual zoom factor
+        self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)
+
+        # Calculate the actual zoom factor after fitInView
+        view_rect = self.rect()
+        item_rect = self.pixmap_item.boundingRect()
+
+        if item_rect.width() > 0 and item_rect.height() > 0:
+            zoom_x = view_rect.width() / item_rect.width()
+            zoom_y = view_rect.height() / item_rect.height()
+            self.zoom_factor = min(zoom_x, zoom_y)  # Keep aspect ratio
+        else:
+            self.zoom_factor = 1.0
+
+        self.update()
+
+    def highlight_point(self, x: int, y: int):
+        """Highlight a specific point (for GCP selection)."""
+        # Convert to float for internal storage
+        self.highlighted_point = None  # Clear current highlight
+        # We could add visual highlighting here if needed
+        self.update()
 
     def get_image_data(self):
         """Get current image data for histogram."""

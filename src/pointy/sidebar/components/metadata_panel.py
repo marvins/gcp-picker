@@ -1,10 +1,25 @@
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#*                                                                                    *#
+#*                           Copyright (c) 2026 Terminus LLC                          *#
+#*                                                                                    *#
+#*                                All Rights Reserved.                                *#
+#*                                                                                    *#
+#*          Use of this source code is governed by LICENSE in the repo root.          *#
+#*                                                                                    *#
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
+#
+#    File:    metadata_panel.py
+#    Author:  Marvin Smith
+#    Date:    4/3/2026
+#
 """
 Metadata Panel - Sidebar widget showing cursor position metadata
 """
 
+# Third-Party Libraries
+from qtpy.QtGui import QFont
 from qtpy.QtWidgets import (QWidget, QVBoxLayout, QLabel,
                            QGroupBox, QGridLayout, QFrame)
-from qtpy.QtGui import QFont
 
 
 class Metadata_Panel(QWidget):
