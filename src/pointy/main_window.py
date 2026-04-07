@@ -382,18 +382,23 @@ class Main_Window(QMainWindow):
             QMessageBox.information(self, 'Info', 'No GCPs to save')
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, 'Save GCPs', '',
-            'GCP Files (*.gcp *.txt);;All Files (*)'
-        )
+        if self.collection_manager.has_collection():
+            file_path = self.collection_manager.current_collection.gcp_file
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, 'Save GCPs', '',
+                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
+            )
+            if not file_path:
+                return
 
-        if file_path:
-            try:
-                self.gcp_processor.save_gcps(file_path)
-                self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to file')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to save GCPs')
+        try:
+            self.gcp_processor.save_gcps(file_path)
+            self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to {Path(file_path).name}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
+            self.status_bar.showMessage('Failed to save GCPs')
 
     def export_gcps(self):
         """Export GCPs to file."""
@@ -416,24 +421,30 @@ class Main_Window(QMainWindow):
 
     def load_gcps(self):
         """Load GCPs from file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Load GCPs', '',
-            'GCP Files (*.gcp *.txt);;All Files (*)'
-        )
+        if self.collection_manager.has_collection():
+            file_path = self.collection_manager.current_collection.gcp_file
+            if not Path(file_path).exists():
+                self.status_bar.showMessage(f'GCP file not found: {Path(file_path).name}')
+                return
+        else:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 'Load GCPs', '',
+                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
+            )
+            if not file_path:
+                return
 
-        if file_path:
-            try:
-                self.gcp_processor.load_gcps(file_path)
-                self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
-                self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from file')
+        try:
+            self.gcp_processor.load_gcps(file_path)
+            self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
+            self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from {Path(file_path).name}')
 
-                # Trigger orthorectification if enabled
-                if self.ortho_toggle_action.isChecked():
-                    self.perform_orthorectification()
+            if self.ortho_toggle_action.isChecked():
+                self.perform_orthorectification()
 
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to load GCPs')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
+            self.status_bar.showMessage('Failed to load GCPs')
 
     def clear_all_gcps(self):
         """Clear all GCPs."""
@@ -489,18 +500,23 @@ class Main_Window(QMainWindow):
             QMessageBox.information(self, 'Info', 'No GCPs to save')
             return
 
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, 'Save GCPs', '',
-            'GCP Files (*.gcp *.txt);;All Files (*)'
-        )
+        if self.collection_manager.has_collection():
+            file_path = self.collection_manager.current_collection.gcp_file
+            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+        else:
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, 'Save GCPs', '',
+                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
+            )
+            if not file_path:
+                return
 
-        if file_path:
-            try:
-                self.gcp_processor.save_gcps(file_path)
-                self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to file')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to save GCPs')
+        try:
+            self.gcp_processor.save_gcps(file_path)
+            self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to {Path(file_path).name}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
+            self.status_bar.showMessage('Failed to save GCPs')
 
     def export_gcps(self):
         """Export GCPs to file."""
@@ -523,24 +539,30 @@ class Main_Window(QMainWindow):
 
     def load_gcps(self):
         """Load GCPs from file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Load GCPs', '',
-            'GCP Files (*.gcp *.txt);;All Files (*)'
-        )
+        if self.collection_manager.has_collection():
+            file_path = self.collection_manager.current_collection.gcp_file
+            if not Path(file_path).exists():
+                self.status_bar.showMessage(f'GCP file not found: {Path(file_path).name}')
+                return
+        else:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 'Load GCPs', '',
+                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
+            )
+            if not file_path:
+                return
 
-        if file_path:
-            try:
-                self.gcp_processor.load_gcps(file_path)
-                self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
-                self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from file')
+        try:
+            self.gcp_processor.load_gcps(file_path)
+            self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
+            self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from {Path(file_path).name}')
 
-                # Trigger orthorectification if enabled
-                if self.ortho_toggle_action.isChecked():
-                    self.perform_orthorectification()
+            if self.ortho_toggle_action.isChecked():
+                self.perform_orthorectification()
 
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to load GCPs')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
+            self.status_bar.showMessage('Failed to load GCPs')
 
     def clear_all_gcps(self):
         """Clear all GCPs."""
@@ -810,8 +832,19 @@ class Main_Window(QMainWindow):
         success = self.collection_manager.load_collection(collection_path)
         if success:
             self.status_bar.showMessage(f'Loaded collection: {self.collection_manager.current_collection.name}')
-            # Auto-load first image
             self.load_first_collection_image()
+            # Auto-load GCPs from collection config if the file already exists
+            gcp_file = self.collection_manager.current_collection.gcp_file
+            if Path(gcp_file).exists():
+                try:
+                    self.gcp_processor.load_gcps(gcp_file)
+                    self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
+                    logging.info(f"Auto-loaded {self.gcp_processor.gcp_count()} GCPs from {gcp_file}")
+                    self.status_bar.showMessage(
+                        f'Loaded collection with {self.gcp_processor.gcp_count()} GCPs'
+                    )
+                except Exception as e:
+                    logging.warning(f"Could not auto-load GCPs from {gcp_file}: {e}")
         else:
             QMessageBox.critical(self, 'Error', f'Failed to load collection: {collection_path}')
             self.status_bar.showMessage('Failed to load collection')

@@ -21,6 +21,7 @@ import os
 import sys
 import logging
 import argparse
+import traceback
 from pathlib import Path
 
 #  Third-Party Libraries
@@ -119,10 +120,20 @@ def main():
     # Install Qt message handler to catch Qt errors
     qInstallMessageHandler(qt_message_handler)
 
-    # Install exception hook to catch all unhandled exceptions
+    # Install exception hook to catch all unhandled exceptions during the Qt event loop.
+    # Wrapped defensively: logger and Qt may be unavailable if the hook fires during teardown.
     def exception_hook(exc_type, exc_value, exc_traceback):
-        logger.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        if issubclass(exc_type, (SystemExit, KeyboardInterrupt)):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        try:
+            logger.critical("Uncaught exception:", exc_info=(exc_type, exc_value, exc_traceback))
+        except Exception:
+            pass
+        try:
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        except Exception:
+            pass
         os._exit(1)
 
     sys.excepthook = exception_hook
@@ -189,6 +200,15 @@ def main():
 
     # Start application
     return_code = app.exec()
+
+    # Replace custom hook with a teardown-safe logger before Qt GC runs.
+    # Uses sys.stderr directly (logger may already be torn down at this point).
+    # This captures the actual root cause of any teardown exceptions.
+    def teardown_exception_hook(exc_type, exc_value, exc_traceback):
+        print("[teardown] Unhandled exception during Qt shutdown:", file=sys.stderr)
+        traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
+
+    sys.excepthook = teardown_exception_hook
 
     logger.info(f"Application exited with code: {return_code}")
     return return_code

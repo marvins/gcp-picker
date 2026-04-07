@@ -204,9 +204,9 @@ class GCP_Processor:
             f.write("# Format: ID test_x test_y ref_x ref_y longitude latitude\n")
 
             for gcp in self.gcps.values():
-                f.write(f"{gcp.id} {gcp.test_x:.6f} {gcp.test_y:.6f} "
-                       f"{gcp.ref_x:.6f} {gcp.ref_y:.6f} "
-                       f"{gcp.longitude:.8f} {gcp.latitude:.8f}\n")
+                f.write(f"{gcp.id} {gcp.test_pixel.x_px:.6f} {gcp.test_pixel.y_px:.6f} "
+                       f"{gcp.reference_pixel.x_px:.6f} {gcp.reference_pixel.y_px:.6f} "
+                       f"{gcp.geographic.longitude_deg:.8f} {gcp.geographic.latitude_deg:.8f}\n")
 
     def _save_csv(self, file_path: Path):
         """Save GCPs as CSV."""
@@ -216,9 +216,9 @@ class GCP_Processor:
 
             for gcp in self.gcps.values():
                 writer.writerow([
-                    gcp.id, gcp.test_x, gcp.test_y,
-                    gcp.ref_x, gcp.ref_y,
-                    gcp.longitude, gcp.latitude
+                    gcp.id, gcp.test_pixel.x_px, gcp.test_pixel.y_px,
+                    gcp.reference_pixel.x_px, gcp.reference_pixel.y_px,
+                    gcp.geographic.longitude_deg, gcp.geographic.latitude_deg
                 ])
 
     def load_gcps(self, file_path: str):
