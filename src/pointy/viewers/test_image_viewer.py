@@ -34,7 +34,7 @@ from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLab
                            QPushButton)
 
 #  Project Libraries
-from pointy.core.coordinate import Pixel, Geographic
+from tmns.geo.coord import Pixel, Geographic
 from pointy.core.qt_async_image_loader import Qt_Async_Image_Loader, Loading_Indicator_Widget
 from pointy.widgets.graphics_image_view import Graphics_Image_View
 
@@ -56,6 +56,7 @@ class Test_Image_Viewer(QWidget):
         self.gcp_points = {}  # gcp_id -> (x, y)
         self.rpc_data = None
         self.is_orthorectified = False
+        self._projector = None
 
         # Image adjustment parameters
         self.auto_stretch = False
@@ -398,61 +399,68 @@ class Test_Image_Viewer(QWidget):
         self.image_view.update()
 
     def on_point_clicked(self, x, y):
-        """Handle point click on image."""
+        """Handle point click on image.
+
+        Coordinates (x, y) are already in source image pixel space as
+        reported by Graphics_Image_View (accounts for zoom/pan).  Emit
+        them directly; callers can use source_pixel_to_geographic() if
+        a geographic coordinate is also needed.
+        """
         if self.current_image is None:
             return
 
-        # Convert coordinates using projector if available
-        img_x, img_y = self.convert_coordinates(x, y)
-
-        # Emit signal
-        self.point_selected.emit(img_x, img_y)
-
-        self.status_label.setText(f"Point selected: ({img_x:.1f}, {img_y:.1f})")
+        self.point_selected.emit(x, y)
+        self.status_label.setText(f"Point selected: ({x:.1f}, {y:.1f})")
 
     def set_projector(self, projector):
-        """Set the projector for coordinate transformations."""
+        """Set the projector used to convert source image pixels to geographic coordinates."""
         self._projector = projector
 
-    def convert_coordinates(self, x, y):
-        """Convert coordinates using projector if available."""
-        # Check if we have a projector available
-        if hasattr(self, '_projector') and self._projector is not None:
-            try:
-                # Convert through projector pipeline
+    def source_pixel_to_geographic(self, x: float, y: float) -> Geographic | None:
+        """Convert a source image pixel to geographic coordinates via the projector.
 
-                # Convert scene coordinates to source pixel
-                source_pixel = Pixel.create(x, y)
+        Returns None if no projector is set or the transformation fails.
 
-                # Transform to geographic coordinates
-                geographic = self._projector.source_to_geographic(source_pixel)
+        Args:
+            x: Source image pixel x coordinate.
+            y: Source image pixel y coordinate.
 
-                # Transform to destination pixel (orthorectified)
-                dest_pixel = self._projector.geographic_to_destination(geographic)
-
-                return dest_pixel.x_px, dest_pixel.y_px
-
-            except Exception as e:
-                # Fall back to passthrough on error
-                return x, y
-        else:
-            # No projector - passthrough (Identity mode)
-            return x, y
+        Returns:
+            Geographic (lat, lon) or None.
+        """
+        if self._projector is None:
+            return None
+        try:
+            return self._projector.source_to_geographic(Pixel(x_px=x, y_px=y))
+        except Exception as e:
+            logging.debug(f"source_pixel_to_geographic failed at ({x}, {y}): {e}")
+            return None
 
     def on_gcp_point_clicked(self, gcp_id):
         """Handle GCP point click."""
         self.gcp_point_clicked.emit(gcp_id)
 
     def _on_cursor_moved(self, x, y, pixel_value):
-        """Handle cursor movement and forward signal with optional ortho coordinates."""
-        # Get orthorectified coordinates if available
-        lat, lon, alt = None, None, None
-        if self.is_orthorectified and self.ortho_transform:
-            # Calculate ortho coordinates from pixel coordinates
-            lat, lon, alt = self.ortho_transform(x, y)
+        """Handle cursor movement - convert source pixel to geographic if projector is set.
+
+        Coordinates (x, y) are in source image pixel space (reported by
+        Graphics_Image_View after accounting for zoom/pan).  The projector
+        converts them to geographic (lat, lon) when available.
+        """
+        geo = self.source_pixel_to_geographic(x, y)
+
+        lat = geo.latitude_deg if geo is not None else None
+        lon = geo.longitude_deg if geo is not None else None
+        alt = None  # altitude not available from 2-D projectors
 
         self.cursor_moved.emit(x, y, pixel_value, lat, lon, alt)
-        self.status_label.setText(f"Cursor: ({x}, {y}) Pixel: {pixel_value}")
+
+        if geo is not None:
+            self.status_label.setText(
+                f"Cursor: ({x}, {y}) | {geo.latitude_deg:.6f}\u00b0N  {geo.longitude_deg:.6f}\u00b0E"
+            )
+        else:
+            self.status_label.setText(f"Cursor: ({x}, {y}) Pixel: {pixel_value}")
 
     def add_gcp_point(self, x, y, gcp_id):
         """Add a GCP point."""

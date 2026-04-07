@@ -29,13 +29,13 @@ from qtpy.QtCore import qInstallMessageHandler, QtMsgType, QMessageLogContext, Q
 from qtpy.QtGui import QPixmap, QIcon
 
 #  Project Libraries
+from pointy.core.config_manager import get_config_manager
 from pointy.main_window import Main_Window
-from pointy.widgets.splash_screen import Splash_Manager
 from pointy import __version__
 from pointy import get_main_window
 from pointy.resources import resources
-from pointy.core.terrain import Manager, Terrain_Catalog
-from pointy.core.config_manager import get_config_manager
+from pointy.widgets.splash_screen import Splash_Manager
+from tmns.geo.terrain import Manager as Terrain_Manager, Terrain_Catalog
 
 def qt_message_handler(mode, context, message):
     """Qt message handler to force crashes in the Qt event loop."""
@@ -148,7 +148,7 @@ def main():
         # Check if auto-fetch elevation is enabled
         if app_settings and app_settings.auto_fetch_elevation:
             catalog = Terrain_Catalog()
-            terrain_manager = Manager([catalog], cache_enabled=True)
+            terrain_manager = Terrain_Manager([catalog], cache_enabled=True)
             if terrain_manager and terrain_manager.sources:
                 total_sources = sum(len(catalog.sources) for catalog in terrain_manager.sources)
                 logger.info(f"Terrain manager initialized with {total_sources} sources (auto-fetch enabled)")

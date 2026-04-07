@@ -149,7 +149,7 @@ class Graphics_Image_View(QGraphicsView):
             # Check if clicking on a GCP point
             for gcp_id, (x, y) in self.gcp_points.items():
                 distance = ((scene_pos.x() - x) ** 2 + (scene_pos.y() - y) ** 2) ** 0.5
-                if distance <= 10 / self.zoom_factor:  # Adjust tolerance for zoom
+                if distance <= 6 / self.zoom_factor:  # Adjust tolerance for zoom
                     self.gcp_point_clicked.emit(gcp_id)
                     return
 
@@ -194,7 +194,7 @@ class Graphics_Image_View(QGraphicsView):
         hovering_gcp = False
         for gcp_id, (x, y) in self.gcp_points.items():
             distance = ((scene_pos.x() - x) ** 2 + (scene_pos.y() - y) ** 2) ** 0.5
-            if distance <= 10 / self.zoom_factor:
+            if distance <= 6 / self.zoom_factor:
                 hovering_gcp = True
                 if self.highlighted_point != gcp_id:
                     self.highlighted_point = gcp_id
@@ -285,14 +285,14 @@ class Graphics_Image_View(QGraphicsView):
             view_pos = self.mapFromScene(QPointF(x, y))
 
             # Draw red circle for pending point
-            painter.setPen(QPen(QColor(255, 0, 0), 3))  # Red, thicker
+            painter.setPen(QPen(QColor(255, 0, 0), 2))  # Red
             painter.setBrush(QColor(255, 0, 0, 70))  # Semi-transparent red
-            painter.drawEllipse(view_pos, 15, 15)  # Larger circle
+            painter.drawEllipse(view_pos, 10, 10)
 
             # Draw label
             painter.setPen(QPen(QColor(255, 0, 0), 1))
             painter.setFont(QFont("Arial", 10, QFont.Bold))
-            painter.drawText(view_pos + QPoint(20, -5), "PENDING")
+            painter.drawText(view_pos + QPoint(13, -5), "PENDING")
 
         # Draw GCP points
         if self.gcp_points:
@@ -305,12 +305,12 @@ class Graphics_Image_View(QGraphicsView):
                 color = QColor(255, 0, 0) if is_highlighted else QColor(255, 255, 0)
                 painter.setPen(QPen(color, 2))
                 painter.setBrush(QColor(color.red(), color.green(), color.blue(), 50))
-                painter.drawEllipse(view_pos, 12, 12)
+                painter.drawEllipse(view_pos, 6, 6)
 
                 # Draw label
                 painter.setPen(QPen(color, 1))
                 painter.setFont(QFont("Arial", 8))
-                painter.drawText(view_pos + QPoint(15, -5), f"GCP{gcp_id}")
+                painter.drawText(view_pos + QPoint(9, -5), f"GCP{gcp_id}")
 
     def set_image_data(self, image_data, bit_depth=8, dtype=np.uint8):
         """Set image data for histogram calculations."""

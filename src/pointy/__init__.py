@@ -24,59 +24,12 @@ from ._version import (
     get_version_info,
 )
 
-# Core functionality (no GUI dependencies)
-from .core.coordinate import (
-    Transformer,
-    Geographic,
-    Coordinate,
-    Coordinate_Type,
-    UTM,
-    Web_Mercator,
-    ECEF,
-    Pixel,
-)
-from .core.datum import Datum, Vertical_Datum
-
-from .core.terrain import (
-    Manager,
-    Elevation_Point,
-    Elevation_Source,
-    GeoTIFF_Elevation_Source,
-    Terrain_Catalog,
-    Interpolation_Method,
-    elevation,
-    get_terrain_manager,
-    create_terrain_manager,
-    create_catalog_manager,
-)
-
 def get_main_window():
     """Get MainWindow class (deferred import to avoid Qt initialization during tests)."""
     from .main_window import MainWindow
     return MainWindow
 
 __all__ = [
-    # Core functionality
-    "Transformer",
-    "Geographic",
-    "Coordinate",
-    "Coordinate_Type",
-    "UTM",
-    "Web_Mercator",
-    "ECEF",
-    "Pixel",
-    "Datum",
-    "Vertical_Datum",
-    "Manager",
-    "Elevation_Point",
-    "Elevation_Source",
-    "GeoTIFF_Elevation_Source",
-    "Terrain_Catalog",
-    "Interpolation_Method",
-    "elevation",
-    "get_terrain_manager",
-    "create_terrain_manager",
-    "create_catalog_manager",
     # GUI functionality (deferred)
     "get_main_window",
     # Version info

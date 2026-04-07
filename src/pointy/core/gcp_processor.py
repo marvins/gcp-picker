@@ -25,9 +25,9 @@ from typing import Dict, List, Tuple
 #  Third-Party Libraries
 
 #  Project Libraries
-from pointy.core.coordinate import Geographic, Pixel, UTM
-from pointy.core.gcp import GCP
-from pointy.core.terrain import elevation as get_elevation
+from tmns.geo.coord import Geographic, Pixel, UTM
+from tmns.geo.terrain import elevation as get_elevation
+from tmns.geo.projector import GCP
 
 class GCP_Processor:
     """Core processor for ground control points."""

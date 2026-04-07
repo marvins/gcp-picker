@@ -20,9 +20,8 @@ import math
 import numpy as np
 import pytest
 
-from pointy.core.coordinate import Geographic, Pixel
-from pointy.core.gcp import GCP
-from pointy.core.projector import Affine_Projection, Identity_Projection, Transformation_Type
+from tmns.geo.coord import Geographic, Pixel
+from tmns.geo.projector import Transformation_Type, Identity, GCP
 
 
 class Simple_Camera_Model:
@@ -121,10 +120,8 @@ class Test_Camera_Integration:
         for i in range(3):
             for j in range(3):
                 # Use valid geographic coordinates
-                geo = Geographic(
-                    latitude_deg=35.0 + i * 0.001,
-                    longitude_deg=-118.0 + j * 0.001
-                )
+                geo = Geographic(latitude_deg=35.0 + i * 0.001, longitude_deg=-118.0 + j * 0.001)
+
                 # Use pixel coordinates that work with identity projection
                 pixel = Pixel(x_px=35.0 + i * 0.001, y_px=-118.0 + j * 0.001)
 
@@ -147,7 +144,7 @@ class Test_Camera_Integration:
         assert min(lons) <= -118.0 <= max(lons)
 
         # Test with identity projector (should work for simple case)
-        projector = Identity_Projection()
+        projector = Identity()
 
         # Test roundtrip transformations
         for gcp in gcps[:3]:  # Test first few GCPs

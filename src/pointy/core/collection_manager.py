@@ -27,7 +27,7 @@ from typing import List
 from qtpy.QtCore import QObject, Signal
 
 #  Project Libraries
-from pointy.core.coordinate import Geographic
+from tmns.geo.coord import Geographic
 
 
 @dataclass

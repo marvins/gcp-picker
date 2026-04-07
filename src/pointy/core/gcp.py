@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from rasterio.control import GroundControlPoint
 
 #  Project Libraries
-from pointy.core.coordinate import Geographic, Pixel, UTM
-from pointy.core.terrain import elevation
+from tmns.geo.coord import Geographic, Pixel, UTM
+from tmns.geo.terrain import elevation
 
 @dataclass
 class GCP:

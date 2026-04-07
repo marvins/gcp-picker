@@ -42,6 +42,7 @@ dependencies = [
     "tomli-w>=1.1.0",
     "tqdm>=4.64.0",
     "python-dotenv>=1.0.0",
+    "terminus-core-python>=0.0.2",
 ]
 
 [tool.setuptools.dynamic]
