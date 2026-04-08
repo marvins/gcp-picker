@@ -36,7 +36,7 @@ from pointy import __version__
 from pointy import get_main_window
 from pointy.resources import resources
 from pointy.widgets.splash_screen import Splash_Manager
-from tmns.geo.terrain import Manager as Terrain_Manager, Terrain_Catalog
+from tmns.geo.terrain import Manager as Terrain_Manager, Catalog, get_default_manager
 
 def qt_message_handler(mode, context, message):
     """Qt message handler to force crashes in the Qt event loop."""
@@ -158,8 +158,7 @@ def main():
 
         # Check if auto-fetch elevation is enabled
         if app_settings and app_settings.auto_fetch_elevation:
-            catalog = Terrain_Catalog()
-            terrain_manager = Terrain_Manager([catalog], cache_enabled=True)
+            terrain_manager = get_default_manager()
             if terrain_manager and terrain_manager.sources:
                 total_sources = sum(len(catalog.sources) for catalog in terrain_manager.sources)
                 logger.info(f"Terrain manager initialized with {total_sources} sources (auto-fetch enabled)")

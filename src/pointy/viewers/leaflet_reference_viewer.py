@@ -40,7 +40,8 @@ from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
 
 # Project imports
 from pointy.core.config_manager import get_config_manager
-from tmns.geo.terrain import Manager as Terrain_Manager, Geographic
+from tmns.geo.terrain import Manager as Terrain_Manager
+from tmns.geo.coord import Geographic
 from pointy.core.wms_client import WMSClient
 
 
