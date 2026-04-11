@@ -20,6 +20,7 @@ Leaflet Reference Viewer - Web-based map viewer with Leaflet and ArcGIS services
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 
 #  Third-Party Libraries
@@ -34,7 +35,7 @@ from qtpy.QtGui import QFont
 from qtpy.QtWebChannel import QWebChannel
 from qtpy.QtWebEngineCore import QWebEngineSettings
 from qtpy.QtWebEngineWidgets import QWebEngineView
-from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QHBoxLayout,
+from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QFrame, QHBoxLayout,
                            QLabel, QLineEdit, QPushButton, QScrollArea, QSizePolicy,
                            QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
@@ -52,6 +53,7 @@ class Leaflet_Bridge(QObject):
     point_clicked = Signal(float, float, float, float)  # x, y, lon, lat
     map_ready = Signal()
     cursor_moved = Signal(float, float, float)  # lat, lon, alt (alt optional)
+    center_reported = Signal(float, float, float)  # lat, lon, zoom
 
     def __init__(self):
         super().__init__()
@@ -68,6 +70,10 @@ class Leaflet_Bridge(QObject):
     def cursor_moved_from_js(self, lat: float, lon: float, alt: float = 0.0):
         self.cursor_moved.emit(lat, lon, alt)
 
+    @Slot(float, float, float)
+    def report_center_from_js(self, lat: float, lon: float, zoom: float):
+        self.center_reported.emit(lat, lon, zoom)
+
 
 class Leaflet_Reference_Viewer(QWidget):
     """Web-based reference viewer using Leaflet with ArcGIS Imagery services."""
@@ -76,16 +82,21 @@ class Leaflet_Reference_Viewer(QWidget):
     point_selected = Signal(float, float, float, float)  # x, y, lon, lat
     reference_loaded = Signal(dict)  # reference info
     cursor_moved = Signal(float, float, float)  # lat, lon, alt (alt optional)
+    update_requested = Signal()  # emitted when Update button is clicked
 
     def __init__(self, terrain_manager=None):
         super().__init__()
         self.current_reference = None
-        self.gcp_points = {}  # gcp_id -> (x, y)
+        self.gcp_points = {}  # gcp_id -> (lon, lat)
         self.reference_transform = None
+        self.map_is_ready = False
+        self.pending_gcps = []  # Queue of (gcp_id, lon, lat) to add when map is ready
+        self._image_boundary_corners: list[tuple[float, float]] | None = None  # [(lat, lon), ...]
+        self._last_center: tuple[float, float, float] | None = None
 
         # Setup logger
         self.logger = logging.getLogger(__name__)
-        self.logger.info("Initializing Leaflet Reference Viewer")
+        self.logger.debug("Initializing Leaflet Reference Viewer")
 
         # Load configuration
         self.config_manager = get_config_manager()
@@ -104,7 +115,7 @@ class Leaflet_Reference_Viewer(QWidget):
         self._configure_web_view_settings()
         self.bridge = Leaflet_Bridge()
         self.web_channel = QWebChannel()
-        self.logger.info("Web components initialized successfully")
+        self.logger.debug("Web components initialized successfully")
 
         self.setup_ui()
         if self.web_view is not None:
@@ -123,21 +134,70 @@ class Leaflet_Reference_Viewer(QWidget):
     def setup_ui(self):
         """Setup the UI layout."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Header
-        header_layout = QHBoxLayout()
+        # Integrated toolbar bar
+        toolbar = QWidget()
+        toolbar.setFixedHeight(32)
+        toolbar.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                border: none;
+            }
+            QLabel {
+                color: #cccccc;
+                font-size: 9pt;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+                padding: 0 6px;
+            }
+            QPushButton {
+                color: #cccccc;
+                background-color: transparent;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 10px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #555555;
+            }
+            QComboBox {
+                color: #cccccc;
+                background-color: #3c3c3c;
+                border: 1px solid #555555;
+                border-radius: 3px;
+                padding: 1px 6px;
+                font-size: 9pt;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3c3c3c;
+                color: #cccccc;
+                selection-background-color: #0d6efd;
+            }
+        """)
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(4, 0, 4, 0)
+        toolbar_layout.setSpacing(2)
 
-        title_label = QLabel("Reference Map (Leaflet)")
-        title_label.setFont(QFont("Arial", 10, QFont.Bold))
-        header_layout.addWidget(title_label)
+        title_label = QLabel("Reference Map")
+        toolbar_layout.addWidget(title_label)
 
-        header_layout.addStretch()
+        toolbar_layout.addStretch()
 
         # Imagery service selector
         service_label = QLabel("Imagery:")
-        header_layout.addWidget(service_label)
+        service_label.setStyleSheet("QLabel { font-weight: normal; }")
+        toolbar_layout.addWidget(service_label)
 
         self.service_combo = QComboBox()
         self.service_combo.addItems(list(self.imagery_services.keys()))
@@ -148,9 +208,21 @@ class Leaflet_Reference_Viewer(QWidget):
             self.service_combo.setCurrentText(default_service)
 
         self.service_combo.currentTextChanged.connect(self.on_imagery_service_changed)
-        header_layout.addWidget(self.service_combo)
+        toolbar_layout.addWidget(self.service_combo)
 
-        layout.addLayout(header_layout)
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setStyleSheet("QFrame { color: #555555; }")
+        toolbar_layout.addWidget(sep)
+
+        # Update button
+        self.update_btn = QPushButton("↺  Update")
+        self.update_btn.setToolTip("Pan test image to match this map's geographic center")
+        self.update_btn.clicked.connect(self.update_requested)
+        toolbar_layout.addWidget(self.update_btn)
+
+        layout.addWidget(toolbar)
 
         # Web view for map or fallback
         if self.web_view is not None:
@@ -184,7 +256,7 @@ class Leaflet_Reference_Viewer(QWidget):
             page = self.web_view.page()
             if page is not None:
                 page.setWebChannel(self.web_channel)
-                self.logger.info("Web channel set up successfully")
+                self.logger.debug("Web channel set up successfully")
             else:
                 self.logger.error("Failed to get web page for channel setup")
 
@@ -192,6 +264,7 @@ class Leaflet_Reference_Viewer(QWidget):
             self.bridge.point_clicked.connect(self.on_javascript_point_clicked)
             self.bridge.map_ready.connect(self.on_map_ready)
             self.bridge.cursor_moved.connect(self.on_cursor_moved_throttled)
+            self.bridge.center_reported.connect(self._on_center_reported)
 
     def create_initial_map(self):
         """Create the initial Leaflet map."""
@@ -392,16 +465,39 @@ class Leaflet_Reference_Viewer(QWidget):
 
         function addGCPPoint(gcpId, lon, lat) {
             if (map) {
-                var marker = L.marker([lat, lon]).addTo(map);
+                var marker = L.circleMarker([lat, lon], {
+                    radius: 8,
+                    color: '#ffffff',
+                    weight: 2,
+                    fillColor: '#0d6efd',
+                    fillOpacity: 0.85
+                }).addTo(map);
                 marker.bindPopup('GCP ' + gcpId);
                 return marker;
+            }
+        }
+
+        function addGCPPointsBatch(gcpPoints) {
+            // gcpPoints is array of [gcpId, lon, lat]
+            if (map && Array.isArray(gcpPoints)) {
+                for (var i = 0; i < gcpPoints.length; i++) {
+                    var point = gcpPoints[i];
+                    var marker = L.circleMarker([point[2], point[1]], {
+                        radius: 8,
+                        color: '#ffffff',
+                        weight: 2,
+                        fillColor: '#0d6efd',
+                        fillOpacity: 0.85
+                    }).addTo(map);
+                    marker.bindPopup('GCP ' + point[0]);
+                }
             }
         }
 
         function clearGCPPoints() {
             if (map) {
                 map.eachLayer(function(layer) {
-                    if (layer instanceof L.Marker) {
+                    if (layer instanceof L.Marker || layer instanceof L.CircleMarker) {
                         map.removeLayer(layer);
                     }
                 });
@@ -412,10 +508,45 @@ class Leaflet_Reference_Viewer(QWidget):
             console.log('Highlighting GCP ' + gcpId);
         }
 
+        function reportCenter() {
+            if (map && bridge && typeof bridge.report_center_from_js === 'function') {
+                var center = map.getCenter();
+                var zoom = map.getZoom();
+                bridge.report_center_from_js(center.lat, center.lng, zoom);
+            }
+        }
+
+        var imageBoundaryLayer = null;
+
+        function setImageBoundary(latlngs) {
+            if (map) {
+                if (imageBoundaryLayer) {
+                    map.removeLayer(imageBoundaryLayer);
+                }
+                imageBoundaryLayer = L.polygon(latlngs, {
+                    color: '#ff6600',
+                    weight: 2,
+                    fillOpacity: 0.08,
+                    dashArray: '6 4'
+                }).addTo(map);
+            }
+        }
+
+        function clearImageBoundary() {
+            if (map && imageBoundaryLayer) {
+                map.removeLayer(imageBoundaryLayer);
+                imageBoundaryLayer = null;
+            }
+        }
+
         window.changeImageryService = changeImageryService;
         window.addGCPPoint = addGCPPoint;
+        window.addGCPPointsBatch = addGCPPointsBatch;
         window.clearGCPPoints = clearGCPPoints;
         window.highlightGCPPoint = highlightGCPPoint;
+        window.reportCenter = reportCenter;
+        window.setImageBoundary = setImageBoundary;
+        window.clearImageBoundary = clearImageBoundary;
 
         document.addEventListener('DOMContentLoaded', function() {
             waitForLeafletAndInitialize(0);
@@ -432,6 +563,15 @@ class Leaflet_Reference_Viewer(QWidget):
 
         return html
 
+    def request_center(self):
+        """Ask the map to report its current center via the bridge signal."""
+        if self.map_is_ready and self.web_view is not None:
+            self.web_view.page().runJavaScript("reportCenter();")
+
+    def _on_center_reported(self, lat: float, lon: float, zoom: float):
+        """Store the latest reported map center."""
+        self._last_center = (lat, lon, zoom)
+
     def on_imagery_service_changed(self, service_name: str):
         """Change the imagery service."""
         if service_name not in self.imagery_services:
@@ -440,7 +580,7 @@ class Leaflet_Reference_Viewer(QWidget):
 
         service = self.imagery_services[service_name]
         self.status_label.setText(f"Loading {service_name}...")
-        self.logger.info(f"Changing imagery service to: {service_name}")
+        self.logger.debug(f"Changing imagery service to: {service_name}")
 
         # Update current reference info
         self.current_reference = {
@@ -472,7 +612,7 @@ class Leaflet_Reference_Viewer(QWidget):
 
         self.reference_loaded.emit(self.current_reference)
         self.status_label.setText(f"Loaded {service_name}")
-        self.logger.info(f"Successfully loaded imagery service: {service_name}")
+        self.logger.info(f"Imagery service changed to: {service_name}")
 
     def on_javascript_point_clicked(self, x: float, y: float, lon: float, lat: float):
         """Handle point click from JavaScript."""
@@ -481,53 +621,104 @@ class Leaflet_Reference_Viewer(QWidget):
 
     def on_map_ready(self):
         """Handle map ready signal from JavaScript."""
+        self.map_is_ready = True
         self.status_label.setText("Map ready - Click to select points")
 
-    def add_gcp_point(self, gcp_id: int, x: float, y: float):
-        """Add a GCP point to the map."""
-        # This would need to be implemented with JavaScript bridge
-        # For now, store the point
-        self.gcp_points[gcp_id] = (x, y)
+        # Draw any pending GCPs that were added before map was ready
+        if self.pending_gcps:
+            self.logger.debug(f"Drawing {len(self.pending_gcps)} pending GCPs")
+            t0 = time.perf_counter()
+            # Use batch addition for performance
+            gcp_array = str([[gcp_id, lon, lat] for gcp_id, lon, lat in self.pending_gcps])
+            js = f"addGCPPointsBatch({gcp_array});"
+            self.web_view.page().runJavaScript(js)
+            self.pending_gcps.clear()
+            self.logger.debug(f"Finished drawing pending GCPs in {time.perf_counter() - t0:.3f}s")
 
-        # Call JavaScript to add the point
-        js = f"addGCPPoint({gcp_id}, {x}, {y});"
-        self.web_view.page().runJavaScript(js)
+        # Restore image boundary polygon if one was set
+        if self._image_boundary_corners is not None:
+            self._draw_image_boundary()
+
+    def add_gcp_point(self, gcp_id: int, lon: float, lat: float):
+        """Add a GCP point to the map."""
+        # Store the point with geographic coordinates
+        self.gcp_points[gcp_id] = (lon, lat)
+
+        if self.map_is_ready:
+            # Map is ready, call JavaScript directly
+            t0 = time.perf_counter()
+            js = f"addGCPPoint({gcp_id}, {lon}, {lat});"
+            self.web_view.page().runJavaScript(js)
+            self.logger.debug(f"add_gcp_point({gcp_id}): {time.perf_counter() - t0:.3f}s")
+        else:
+            # Map isn't ready yet, queue the GCP for later
+            self.pending_gcps.append((gcp_id, lon, lat))
+            self.logger.debug(f"Queued GCP {gcp_id} for later drawing (map not ready)")
 
     def remove_gcp_point(self, gcp_id: int):
         """Remove a GCP point from the map."""
         if gcp_id in self.gcp_points:
             del self.gcp_points[gcp_id]
 
-        # Clear and redraw all points
-        js = "clearGCPPoints();"
-        self.web_view.page().runJavaScript(js)
+        if self.map_is_ready:
+            t0 = time.perf_counter()
+            # Clear and redraw all points using batch function
+            js_clear = "clearGCPPoints();"
+            self.web_view.page().runJavaScript(js_clear)
 
-        for gcp_id, (x, y) in self.gcp_points.items():
-            js = f"addGCPPoint({gcp_id}, {x}, {y});"
-            self.web_view.page().runJavaScript(js)
+            gcp_array = str([[gcp_id, lon, lat] for gcp_id, (lon, lat) in self.gcp_points.items()])
+            js_add = f"addGCPPointsBatch({gcp_array});"
+            self.web_view.page().runJavaScript(js_add)
+            self.logger.debug(f"remove_gcp_point: redraw {len(self.gcp_points)} GCPs in {time.perf_counter() - t0:.3f}s")
 
     def highlight_gcp_point(self, x: float, y: float):
         """Highlight a specific GCP point."""
-        # This would need to be implemented with JavaScript bridge
-        js = f"highlightGCPPoint({x}, {y});"
-        self.web_view.page().runJavaScript(js)
+        if self.map_is_ready:
+            js = f"highlightGCPPoint({x}, {y});"
+            self.web_view.page().runJavaScript(js)
 
     def draw_gcp_points(self):
         """Draw all GCP points on the map."""
-        # Clear existing points
-        js = "clearGCPPoints();"
-        self.web_view.page().runJavaScript(js)
+        if self.map_is_ready:
+            t0 = time.perf_counter()
+            # Clear existing points
+            js_clear = "clearGCPPoints();"
+            self.web_view.page().runJavaScript(js_clear)
 
-        # Add all points
-        for gcp_id, (x, y) in self.gcp_points.items():
-            js = f"addGCPPoint({gcp_id}, {x}, {y});"
-            self.web_view.page().runJavaScript(js)
+            # Add all points using batch function
+            gcp_array = str([[gcp_id, lon, lat] for gcp_id, (lon, lat) in self.gcp_points.items()])
+            js_add = f"addGCPPointsBatch({gcp_array});"
+            self.web_view.page().runJavaScript(js_add)
+            self.logger.debug(f"draw_gcp_points: drew {len(self.gcp_points)} GCPs in {time.perf_counter() - t0:.3f}s")
+
+    def _draw_image_boundary(self):
+        """Internal: push the stored boundary corners to JavaScript."""
+        if self._image_boundary_corners is None or not self.map_is_ready:
+            return
+        latlngs = str([[float(lat), float(lon)] for lat, lon in self._image_boundary_corners])
+        self.web_view.page().runJavaScript(f"setImageBoundary({latlngs});")
+
+    def set_image_boundary(self, corners: list[tuple[float, float]]):
+        """Draw a polygon on the map showing the orthorectified image boundary.
+
+        Args:
+            corners: List of (lat, lon) tuples in order TL, TR, BR, BL.
+        """
+        self._image_boundary_corners = corners
+        self._draw_image_boundary()
+
+    def clear_image_boundary(self):
+        """Remove the image boundary polygon from the map."""
+        self._image_boundary_corners = None
+        if self.map_is_ready and self.web_view is not None:
+            self.web_view.page().runJavaScript("clearImageBoundary();")
 
     def clear_points(self):
         """Clear all GCP points."""
         self.gcp_points.clear()
-        js = "clearGCPPoints();"
-        self.web_view.page().runJavaScript(js)
+        if self.map_is_ready:
+            js = "clearGCPPoints();"
+            self.web_view.page().runJavaScript(js)
 
     def is_initialized(self) -> bool:
         """Check if the reference viewer has a loaded reference source."""
@@ -545,7 +736,7 @@ class Leaflet_Reference_Viewer(QWidget):
             self.logger.warning("Web view not available, cannot recreate map")
             return
 
-        self.logger.info(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}")
+        self.logger.debug(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}")
 
         # Create a new folium map centered on the specified location
         m = folium.Map(
@@ -579,6 +770,8 @@ class Leaflet_Reference_Viewer(QWidget):
             map_file.write(map_html)
             self._map_html_path = map_file.name
 
+        self.map_is_ready = False
+        # Don't queue existing GCPs - they're already in gcp_points and will be redrawn by on_map_ready
         self.web_view.setUrl(QUrl.fromLocalFile(self._map_html_path))
         self.status_label.setText(f"Map centered on ({lat:.4f}, {lon:.4f})")
 

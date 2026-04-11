@@ -36,13 +36,14 @@ dependencies = [
     "opencv-python>=4.8.0",
     "Pillow>=10.0.0",
     "pyproj>=3.6.0",
+    "scipy>=1.10.0",
     "requests>=2.31.0",
     "matplotlib>=3.7.0",
     "folium>=0.14.0",
     "tomli-w>=1.1.0",
     "tqdm>=4.64.0",
     "python-dotenv>=1.0.0",
-    "terminus-core-python>=0.1.0",
+    "terminus-core-python>=0.1.1",
 ]
 
 [tool.setuptools.dynamic]
@@ -80,6 +81,7 @@ Repository = "https://github.com/gcp-picker/gcp-picker.git"
 
 [project.scripts]
 pointy-mcpointface = "pointy.main:main"
+pointy-model-tester = "pointy.apps.model_tester.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

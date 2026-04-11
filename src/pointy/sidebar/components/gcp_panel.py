@@ -56,7 +56,8 @@ class GCP_Panel(QWidget):
     def setup_ui(self):
         """Setup the GCP panel UI."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
 
         # Header with title and lock button
         header_layout = QHBoxLayout()
@@ -227,18 +228,20 @@ class GCP_Panel(QWidget):
 
     def setup_gcp_info_display(self, parent_layout):
         """Setup the GCP information display area."""
-        # GCP info frame
         info_frame = QFrame()
         info_frame.setFrameStyle(QFrame.StyledPanel)
         info_layout = QVBoxLayout(info_frame)
+        info_layout.setContentsMargins(4, 4, 4, 4)
+        info_layout.setSpacing(2)
 
         info_title = QLabel("Current GCP")
-        info_title.setFont(QFont("Arial", 9, QFont.Bold))
+        info_title.setFont(QFont("Arial", 8, QFont.Bold))
         info_layout.addWidget(info_title)
 
         self.gcp_info = QTextEdit()
-        self.gcp_info.setMaximumHeight(100)
+        self.gcp_info.setMaximumHeight(80)
         self.gcp_info.setReadOnly(True)
+        self.gcp_info.setStyleSheet("QTextEdit { font-size: 8pt; font-family: monospace; border: none; background: #fafafa; }")
         info_layout.addWidget(self.gcp_info)
 
         parent_layout.addWidget(info_frame)
@@ -251,7 +254,7 @@ Test Pixel: ({gcp.test_pixel.x_px:.1f}, {gcp.test_pixel.y_px:.1f})
 Reference Pixel: ({gcp.reference_pixel.x_px:.1f}, {gcp.reference_pixel.y_px:.1f})
 Geographic: ({gcp.geographic.latitude_deg:.6f}, {gcp.geographic.longitude_deg:.6f})
 Elevation: {gcp.geographic.altitude_m:.1f}m
-Error: {gcp.error:.2f}m" if gcp.error else "N/A"
+Error: {f"{gcp.error:.2f}m" if gcp.error is not None else "N/A"}
 Enabled: {gcp.enabled}"""
         else:
             info = "No GCP selected"

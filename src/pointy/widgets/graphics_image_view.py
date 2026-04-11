@@ -54,6 +54,7 @@ class Graphics_Image_View(QGraphicsView):
 
         # Zoom and pan state
         self.zoom_factor = 1.0
+        self._min_zoom = 0.01  # Updated after fitInView
         self._drag_start_pos = None
         self._last_pan_pos = None
 
@@ -89,6 +90,7 @@ class Graphics_Image_View(QGraphicsView):
                 zoom_x = view_rect.width() / item_rect.width()
                 zoom_y = view_rect.height() / item_rect.height()
                 self.zoom_factor = min(zoom_x, zoom_y)  # Keep aspect ratio
+                self._min_zoom = self.zoom_factor  # Allow zooming back out to fit
             else:
                 self.zoom_factor = 1.0
         else:
@@ -105,36 +107,38 @@ class Graphics_Image_View(QGraphicsView):
         # Get wheel delta
         delta = event.angleDelta().y()
 
-        # Calculate zoom factor change
-        zoom_step = 0.1
-        if delta > 0:
-            new_zoom = min(self.zoom_factor + zoom_step, 5.0)  # Max 5x zoom
-        else:
-            new_zoom = max(self.zoom_factor - zoom_step, 0.1)  # Min 0.1 zoom
+        # Multiplicative step: 10% per tick — feels smooth across all zoom levels
+        factor = 1.1 if delta > 0 else 1.0 / 1.1
+        new_zoom = max(self._min_zoom, min(self.zoom_factor * factor, 5.0))
 
         # Get mouse position in view coordinates
-        mouse_pos = event.position()
+        mouse_pos = event.position().toPoint()
 
-        # Get the point under the mouse in scene coordinates before zoom
-        old_scene_pos = self.mapToScene(mouse_pos.toPoint())
+        # Get the scene point under the mouse before zoom
+        scene_pos = self.mapToScene(mouse_pos)
 
         # Apply zoom
         self.zoom_factor = new_zoom
         self.resetTransform()
         self.scale(self.zoom_factor, self.zoom_factor)
 
-        # Get the same point in scene coordinates after zoom
-        new_scene_pos = self.mapToScene(mouse_pos.toPoint())
-
-        # Calculate the offset to keep the mouse over the same scene point
-        offset = new_scene_pos - old_scene_pos
-        self.translate(offset.x(), offset.y())
+        # After zoom, center on the scene point, then adjust so the mouse
+        # stays over the same scene point
+        self.centerOn(scene_pos)
+        delta_viewport = self.mapFromScene(scene_pos) - mouse_pos
+        self.horizontalScrollBar().setValue(
+            self.horizontalScrollBar().value() + delta_viewport.x()
+        )
+        self.verticalScrollBar().setValue(
+            self.verticalScrollBar().value() + delta_viewport.y()
+        )
 
         event.accept()
 
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press for panning and point selection."""
-        if event.button() == Qt.MiddleButton:
+        # Check for middle button or shift+left button (Google Earth style)
+        if event.button() == Qt.MiddleButton or (event.button() == Qt.LeftButton and event.modifiers() & Qt.ShiftModifier):
             # Start panning
             self._drag_start_pos = event.pos()
             self._last_pan_pos = event.pos()
@@ -142,7 +146,7 @@ class Graphics_Image_View(QGraphicsView):
             event.accept()
             return
 
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.LeftButton and not (event.modifiers() & Qt.ShiftModifier):
             # Convert to scene coordinates
             scene_pos = self.mapToScene(event.pos())
 
@@ -163,7 +167,12 @@ class Graphics_Image_View(QGraphicsView):
 
     def mouseMoveEvent(self, event: QMouseEvent):
         """Handle mouse move for panning and cursor tracking."""
-        if self._drag_start_pos and event.buttons() & Qt.MiddleButton:
+        # Check for middle button or shift+left button panning
+        is_panning = (self._drag_start_pos and
+                     (event.buttons() & Qt.MiddleButton or
+                      (event.buttons() & Qt.LeftButton and event.modifiers() & Qt.ShiftModifier)))
+
+        if is_panning:
             # Handle panning
             delta = event.pos() - self._last_pan_pos
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
@@ -215,7 +224,8 @@ class Graphics_Image_View(QGraphicsView):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release."""
-        if event.button() == Qt.MiddleButton:
+        # Check for middle button or shift+left button release
+        if event.button() == Qt.MiddleButton or (event.button() == Qt.LeftButton and event.modifiers() & Qt.ShiftModifier):
             # Stop panning
             self._drag_start_pos = None
             self._last_pan_pos = None
@@ -259,11 +269,28 @@ class Graphics_Image_View(QGraphicsView):
         pixel_y = img_y * self.zoom_factor
         return pixel_x, pixel_y
 
+    def get_view_center_pixel(self) -> tuple[float, float] | None:
+        """Return the image-space coordinates at the center of the viewport."""
+        if self.pixmap_item is None:
+            return None
+        scene_center = self.mapToScene(self.viewport().rect().center())
+        return (scene_center.x(), scene_center.y())
+
     def set_zoom(self, zoom_factor):
-        """Set zoom factor."""
-        self.zoom_factor = max(0.1, min(zoom_factor, 5.0))
+        """Set zoom factor while maintaining current view center."""
+        # Get the current center point in scene coordinates
+        view_center = self.mapToScene(self.viewport().rect().center())
+
+        # Calculate new zoom factor
+        old_zoom = self.zoom_factor
+        self.zoom_factor = max(self._min_zoom, min(zoom_factor, 5.0))
+
+        # Apply zoom
         self.resetTransform()
         self.scale(self.zoom_factor, self.zoom_factor)
+
+        # Center the view on the same scene point
+        self.centerOn(view_center)
 
     def get_zoom(self):
         """Get current zoom factor."""

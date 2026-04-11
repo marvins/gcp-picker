@@ -18,6 +18,7 @@ Test Image Viewer - Left panel for displaying and selecting points in test image
 
 #  Python Standard Libraries
 import logging
+import math
 import time
 from pathlib import Path
 import json
@@ -29,13 +30,15 @@ import numpy as np
 import rasterio
 from PIL import Image
 from qtpy.QtCore import Qt, Signal, QEvent
-from qtpy.QtGui import QImage, QPixmap, QFont, QWheelEvent, QMovie
+from qtpy.QtGui import QImage, QPixmap, QFont, QWheelEvent
 from qtpy.QtWidgets import (QFileDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                           QPushButton)
+                           QPushButton, QFrame)
 
 #  Project Libraries
-from tmns.geo.coord import Pixel, Geographic
-from pointy.core.qt_async_image_loader import Qt_Async_Image_Loader, Loading_Indicator_Widget
+from tmns.geo.coord import Geographic, Pixel
+from tmns.geo.constants import METERS_PER_DEG_LAT
+from tmns.geo.proj import Warp_Extent
+from pointy.core.qt_async_image_loader import Qt_Async_Image_Loader
 from pointy.widgets.graphics_image_view import Graphics_Image_View
 
 class Test_Image_Viewer(QWidget):
@@ -47,16 +50,19 @@ class Test_Image_Viewer(QWidget):
     gcp_point_clicked = Signal(int)  # gcp_id
     cursor_moved = Signal(int, int, object, object, object, object)  # x, y, pixel_value, lat, lon, alt
     image_adjusted = Signal()  # emitted when image adjustments are applied
+    update_requested = Signal()  # emitted when Update button is clicked
+    view_mode_changed = Signal(bool)  # True = ortho, False = raw
 
     def __init__(self):
         super().__init__()
         self.image_path = None
         self.original_image = None
         self.current_image = None
+        self._warped_image = None  # Store warped ortho image separately
         self.gcp_points = {}  # gcp_id -> (x, y)
-        self.rpc_data = None
         self.is_orthorectified = False
         self._projector = None
+        self._warp_extent: Warp_Extent | None = None
 
         # Image adjustment parameters
         self.auto_stretch = False
@@ -71,15 +77,7 @@ class Test_Image_Viewer(QWidget):
 
         # Async loading components
         self.async_loader = Qt_Async_Image_Loader(max_workers=2)
-        self.loading_indicator = Loading_Indicator_Widget()
-        self.loading_indicator.connect_to_loader(self.async_loader)
         self.current_load_id = None
-
-        # Loading animation widget
-        self.loading_movie = QMovie()
-        self.loading_label_animation = QLabel()
-        self.loading_label_animation.setAlignment(Qt.AlignCenter)
-        self.loading_label_animation.setVisible(False)
 
         # Connect async loader signals
         logging.debug("Connecting async loader signals")
@@ -88,44 +86,93 @@ class Test_Image_Viewer(QWidget):
         self.async_loader.load_failed.connect(self.on_load_failed)
         logging.debug("Async loader signals connected")
 
-        # Connect loading indicator signals
-        self.loading_indicator.loading_started.connect(self.show_loading_indicator)
-        self.loading_indicator.loading_finished.connect(self.hide_loading_indicator)
-
         self.setup_ui()
 
     def setup_ui(self):
         """Setup the UI layout."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Header
-        header_layout = QHBoxLayout()
+        # Integrated toolbar bar
+        toolbar = QWidget()
+        toolbar.setFixedHeight(32)
+        toolbar.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                border: none;
+            }
+            QLabel {
+                color: #cccccc;
+                font-size: 9pt;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+                padding: 0 6px;
+            }
+            QPushButton {
+                color: #cccccc;
+                background-color: transparent;
+                border: none;
+                border-radius: 3px;
+                padding: 2px 10px;
+                font-size: 9pt;
+            }
+            QPushButton:hover {
+                background-color: #444444;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #555555;
+            }
+            QPushButton:checked {
+                background-color: #0d6efd;
+                color: #ffffff;
+            }
+            QPushButton:disabled {
+                color: #666666;
+            }
+        """)
+        toolbar_layout = QHBoxLayout(toolbar)
+        toolbar_layout.setContentsMargins(4, 0, 4, 0)
+        toolbar_layout.setSpacing(2)
 
         title_label = QLabel("Test Image")
-        title_label.setFont(QFont("Arial", 10, QFont.Bold))
-        header_layout.addWidget(title_label)
-
-        header_layout.addStretch()
+        toolbar_layout.addWidget(title_label)
 
         # Loading indicator (initially hidden)
         self.loading_label = QLabel("Loading...")
-        self.loading_label.setStyleSheet("QLabel { color: orange; font-weight: bold; }")
+        self.loading_label.setStyleSheet("QLabel { color: #f0a500; font-weight: bold; background: transparent; border: none; }")
         self.loading_label.setVisible(False)
-        header_layout.addWidget(self.loading_label)
+        toolbar_layout.addWidget(self.loading_label)
 
-        header_layout.addStretch()
+        toolbar_layout.addStretch()
 
-        # Load image button
-        self.load_btn = QPushButton("Load Image")
-        self.load_btn.clicked.connect(self.load_image_dialog)
-        header_layout.addWidget(self.load_btn)
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setStyleSheet("QFrame { color: #555555; }")
+        toolbar_layout.addWidget(sep)
 
-        layout.addLayout(header_layout)
+        # Update button
+        self.update_btn = QPushButton("↺  Update")
+        self.update_btn.setToolTip("Pan the reference map to match this view's geographic center")
+        self.update_btn.clicked.connect(self.update_requested)
+        toolbar_layout.addWidget(self.update_btn)
+
+        # Raw / Ortho toggle
+        self.ortho_btn = QPushButton("Raw")
+        self.ortho_btn.setCheckable(True)
+        self.ortho_btn.setEnabled(False)
+        self.ortho_btn.setToolTip("Switch between raw and orthorectified view (requires ortho model)")
+        self.ortho_btn.clicked.connect(self._on_ortho_toggle)
+        toolbar_layout.addWidget(self.ortho_btn)
+
+        layout.addWidget(toolbar)
 
         # Image info label
         self.info_label = QLabel("No image loaded")
-        self.info_label.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
+        self.info_label.setStyleSheet("QLabel { color: gray; font-size: 8pt; }")
         layout.addWidget(self.info_label)
 
         # Image view (replaces scroll area + image canvas)
@@ -157,8 +204,28 @@ class Test_Image_Viewer(QWidget):
 
         # Status bar
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
+        self.status_label.setStyleSheet("QLabel { color: gray; font-size: 8pt; font-family: monospace; }")
         layout.addWidget(self.status_label)
+
+    def _on_ortho_toggle(self, checked: bool):
+        """Handle Raw/Ortho button toggle."""
+        self.ortho_btn.setText("Ortho" if checked else "Raw")
+        self.view_mode_changed.emit(checked)
+
+    def set_ortho_available(self, available: bool):
+        """Enable or disable the ortho toggle based on whether a model is ready."""
+        self.ortho_btn.setEnabled(available)
+        if not available:
+            self.ortho_btn.setChecked(False)
+            self.ortho_btn.setText("Raw")
+
+    def reload_raw_image(self):
+        """Reload and display the original raw image, discarding any ortho rendering."""
+        self._warp_extent = None
+        self._warped_image = None
+        self.is_orthorectified = False
+        if self.image_path:
+            self.load_image(self.image_path)
 
     def load_image_dialog(self):
         """Open file dialog to load test image."""
@@ -173,7 +240,7 @@ class Test_Image_Viewer(QWidget):
     def load_image(self, image_path):
         """Load an image file asynchronously."""
         self.image_path = image_path
-        logging.info(f"Starting async image load: {image_path}")
+        logging.debug(f"Starting async image load: {image_path}")
 
         # Start async load
         self.current_load_id = self.async_loader.load_image_async(image_path)
@@ -181,7 +248,6 @@ class Test_Image_Viewer(QWidget):
         # Update UI to show loading state
         self.info_label.setText(f"Loading: {Path(image_path).name}...")
         self.status_label.setText("Loading image...")
-        self.load_btn.setEnabled(False)
 
         # Show loading overlay and set gray background
         logging.debug("Showing loading overlay")
@@ -196,7 +262,7 @@ class Test_Image_Viewer(QWidget):
     def on_load_started(self, load_id: str, image_path: str):
         """Handle async load started signal."""
         self.current_load_id = load_id
-        logging.info(f"Async load started: {load_id} - {image_path}")
+        logging.debug(f"Async load started: {load_id} - {image_path}")
 
     def on_load_completed(self, load_id: str, image_data: object, load_time: float):
         """Handle async load completed signal."""
@@ -207,7 +273,7 @@ class Test_Image_Viewer(QWidget):
             return  # Ignore stale loads
 
         try:
-            logging.info(f"Async load completed: {load_id} ({load_time:.3f}s)")
+            logging.debug(f"Async load completed: {load_id} ({load_time:.3f}s)")
 
             # Process the loaded image data
             self.process_loaded_image(image_data)
@@ -219,7 +285,6 @@ class Test_Image_Viewer(QWidget):
             height, width = self.current_image.shape[:2]
             self.info_label.setText(f"{Path(self.image_path).name} - {width}x{height}px")
             self.status_label.setText("Image loaded successfully")
-            self.load_btn.setEnabled(True)
 
             # Hide loading overlay and restore background
             logging.debug("Load completed, hiding overlay")
@@ -234,7 +299,7 @@ class Test_Image_Viewer(QWidget):
             # Emit signal
             self.image_loaded.emit(self.image_path)
 
-            logging.info(f"Image displayed: {load_id} ({load_time:.3f}s)")
+            logging.info(f"Image loaded and displayed: {Path(self.image_path).name} ({load_time:.3f}s)")
 
         except Exception as e:
             logging.error(f"Error processing loaded image: {e}")
@@ -250,7 +315,6 @@ class Test_Image_Viewer(QWidget):
         # Update UI
         self.info_label.setText(f"Failed to load: {Path(image_path).name}")
         self.status_label.setText(f"Error: {error}")
-        self.load_btn.setEnabled(True)
 
         # Hide loading overlay and restore background
         self.hide_loading_overlay()
@@ -262,17 +326,6 @@ class Test_Image_Viewer(QWidget):
         """)
         self.current_load_id = None
 
-    def show_loading_indicator(self, load_id: str, image_path: str):
-        """Show loading indicator."""
-        if load_id == self.current_load_id:
-            self.loading_label.setVisible(True)
-            self.loading_label.setText(f"Loading: {Path(image_path).name}...")
-
-    def hide_loading_indicator(self, load_id: str):
-        """Hide loading indicator."""
-        if load_id == self.current_load_id:
-            self.loading_label.setVisible(False)
-
     def process_loaded_image(self, image_data):
         """Process the loaded image data."""
         # Store original image
@@ -281,9 +334,6 @@ class Test_Image_Viewer(QWidget):
         # Apply current adjustments
         self.current_image = self.original_image.copy()
         self.apply_image_adjustments()
-
-        # Extract RPC data if available
-        self.extract_rpc_data(self.image_path)
 
         # Set image data for histogram calculations
         self.image_view.set_image_data(self.original_image, self.bit_depth, self.dtype)
@@ -294,16 +344,16 @@ class Test_Image_Viewer(QWidget):
     def load_geotiff(self, image_path):
         """Load GeoTIFF using rasterio to preserve georeferencing and bit depth."""
         try:
-            logging.info(f"Loading GeoTIFF: {image_path}")
+            logging.debug(f"Loading GeoTIFF: {image_path}")
             with rasterio.open(image_path) as src:
                 # Preserve original data type and bit depth
                 self.dtype = src.dtypes[0]
                 self.bit_depth = src.dtypes[0].itemsize * 8
-                logging.info(f"Detected dtype: {self.dtype}, bit depth: {self.bit_depth}")
+                logging.debug(f"Detected dtype: {self.dtype}, bit depth: {self.bit_depth}")
 
                 # Read all bands
                 image_data = src.read()
-                logging.info(f"Read image data with shape: {image_data.shape}")
+                logging.debug(f"Read image data with shape: {image_data.shape}")
 
                 # Convert from (bands, height, width) to (height, width, bands)
                 if image_data.ndim == 3:
@@ -325,7 +375,7 @@ class Test_Image_Viewer(QWidget):
 
                 # Update pixel range based on bit depth
                 self.max_pixel = (2 ** self.bit_depth) - 1
-                logging.info(f"Set max pixel to: {self.max_pixel}")
+                logging.debug(f"Set max pixel to: {self.max_pixel}")
 
         except Exception as e:
             logging.error(f"Error loading GeoTIFF: {e}")
@@ -336,24 +386,7 @@ class Test_Image_Viewer(QWidget):
             self.dtype = np.uint8
             self.bit_depth = 8
             self.max_pixel = 255
-            logging.info(f"Fallback to 8-bit, max pixel: {self.max_pixel}")
-
-    def extract_rpc_data(self, image_path):
-        """Extract RPC data from GeoTIFF if available."""
-        try:
-            with rasterio.open(image_path) as src:
-                # Try to get RPC data from tags
-                rpc_metadata = src.tags().get('RPC_METADATA')
-
-                if rpc_metadata:
-                    try:
-                        self.rpc_data = json.loads(rpc_metadata)
-                    except json.JSONDecodeError:
-                        self.rpc_data = {'raw': rpc_metadata}
-                    self.status_label.setText("Image loaded with RPC data")
-
-        except Exception:
-            pass  # No RPC data found
+            logging.debug(f"Fallback to 8-bit, max pixel: {self.max_pixel}")
 
     def update_display(self):
         """Update the image display."""
@@ -390,24 +423,83 @@ class Test_Image_Viewer(QWidget):
         self.draw_gcp_points()
 
     def draw_gcp_points(self):
-        """Draw GCP points on the image."""
+        """Draw GCP points on the image.
+
+        In raw mode draws at stored source pixel coordinates.
+        In ortho mode projects each GCP through the projector to the
+        warped output grid before drawing.
+        """
         self.image_view.clear_gcp_points()
 
         for gcp_id, (x, y) in self.gcp_points.items():
-            self.image_view.add_gcp_point(gcp_id, x, y)
+            draw_x, draw_y = x, y
+
+            if (self.is_orthorectified
+                    and self._warp_extent is not None
+                    and self._projector is not None
+                    and self.current_image is not None):
+                try:
+                    geo = self._projector.source_to_geographic(Pixel(x_px=x, y_px=y))
+                    result = self.geo_to_ortho_pixel(geo.latitude_deg, geo.longitude_deg)
+                    if result is not None:
+                        draw_x, draw_y = result
+                except Exception:
+                    pass
+
+            self.image_view.add_gcp_point(gcp_id, draw_x, draw_y)
 
         self.image_view.update()
+
+    def geo_to_ortho_pixel(self, lat: float, lon: float) -> tuple[float, float] | None:
+        """Convert a geographic coordinate to ortho output pixel (col, row).
+
+        Returns None if the viewer is not in ortho mode or extents are unavailable.
+        """
+        if self._warp_extent is None or self.current_image is None:
+            return None
+        h, w = self.current_image.shape[:2]
+        ext = self._warp_extent
+        params = Geographic.compute_extent_params(ext.min_point, ext.max_point, (w, h))
+        px = (lon - ext.min_point.longitude_deg) / params.width * w
+        py = (ext.max_point.latitude_deg - lat) / params.height * h
+        return px, py
+
+    def ortho_pixel_to_geo(self, x: float, y: float) -> tuple[float, float] | None:
+        """Convert an ortho output pixel (col, row) to (lat, lon).
+
+        Returns None if the viewer is not in ortho mode or extents are unavailable.
+        """
+        if self._warp_extent is None or self.current_image is None:
+            return None
+        h, w = self.current_image.shape[:2]
+        ext = self._warp_extent
+        params = Geographic.compute_extent_params(ext.min_point, ext.max_point, (w, h))
+        lon = ext.min_point.longitude_deg + (x / w) * params.width
+        lat = ext.max_point.latitude_deg - (y / h) * params.height
+        return lat, lon
 
     def on_point_clicked(self, x, y):
         """Handle point click on image.
 
-        Coordinates (x, y) are already in source image pixel space as
-        reported by Graphics_Image_View (accounts for zoom/pan).  Emit
-        them directly; callers can use source_pixel_to_geographic() if
-        a geographic coordinate is also needed.
+        In raw mode, (x, y) are already source image pixel coordinates.
+        In ortho mode, (x, y) are in the warped output grid; they are
+        inverted back to source pixel space via the warp extent + projector
+        before emitting.
         """
         if self.current_image is None:
             return
+
+        if self.is_orthorectified and self._warp_extent is not None and self._projector is not None:
+            geo = self.ortho_pixel_to_geo(x, y)
+            if geo is None:
+                return
+            lat, lon = geo
+            try:
+                src_px = self._projector.geographic_to_source(Geographic(latitude_deg=lat, longitude_deg=lon))
+                x, y = src_px.x_px, src_px.y_px
+            except Exception as e:
+                logging.debug(f'Ortho click inversion failed: {e}')
+                return
 
         self.point_selected.emit(x, y)
         self.status_label.setText(f"Point selected: ({x:.1f}, {y:.1f})")
@@ -434,6 +526,30 @@ class Test_Image_Viewer(QWidget):
             return self._projector.source_to_geographic(Pixel(x_px=x, y_px=y))
         except Exception as e:
             logging.debug(f"source_pixel_to_geographic failed at ({x}, {y}): {e}")
+            return None
+
+    def geo_scale_at_center(self) -> float | None:
+        """Return the ground sample distance (metres/pixel) at the image centre.
+
+        Uses the current projector to project two nearby pixels and measures
+        the resulting geographic distance.  Returns None if no projector is set
+        or the image has not been loaded yet.
+        """
+        if self._projector is None or self._projector.is_identity:
+            return None
+        if self.original_image is None:
+            return None
+        try:
+            src_h, src_w = self.original_image.shape[:2]
+            delta = max(src_w, src_h) * 0.01
+            cx, cy = src_w / 2.0, src_h / 2.0
+            geo_a = self._projector.source_to_geographic(Pixel(x_px=cx,         y_px=cy))
+            geo_b = self._projector.source_to_geographic(Pixel(x_px=cx + delta, y_px=cy))
+            d_deg = abs(geo_b.longitude_deg - geo_a.longitude_deg)
+            meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(geo_a.latitude_deg))
+            return d_deg * meters_per_deg_lon / delta
+        except Exception as e:
+            logging.debug(f'geo_scale_at_center failed: {e}')
             return None
 
     def on_gcp_point_clicked(self, gcp_id):
@@ -474,12 +590,33 @@ class Test_Image_Viewer(QWidget):
             self.draw_gcp_points()
 
     def highlight_gcp_point(self, x, y):
-        """Highlight a specific GCP point."""
+        """Highlight a specific GCP point.
+
+        In ortho mode, converts source pixel coordinates to ortho pixel coordinates.
+        """
+        if self.is_orthorectified and self._warp_extent is not None:
+            # Convert source pixel to geographic, then to ortho pixel
+            geo = self.source_pixel_to_geographic(x, y)
+            if geo is not None:
+                ortho_result = self.geo_to_ortho_pixel(geo.latitude_deg, geo.longitude_deg)
+                if ortho_result is not None:
+                    x, y = ortho_result
         self.image_view.highlight_point(x, y)
 
     def clear_points(self):
         """Clear all GCP points."""
         self.gcp_points.clear()
+        self.draw_gcp_points()
+
+    def display_warped_array(self, warped: np.ndarray, warp_extent: Warp_Extent | None = None):
+        """Display a pre-warped numpy image array (H x W x 3, uint8) as the ortho view."""
+        self._warped_image = warped.copy()
+        self.current_image = self._warped_image.copy()
+        self.is_orthorectified = True
+        self._warp_extent = warp_extent
+        self.update_display()
+        h, w = warped.shape[:2]
+        self.info_label.setText(f"Orthorectified - {w}x{h}px")
         self.draw_gcp_points()
 
     def update_orthorectified_image(self, ortho_image_path):
@@ -488,7 +625,8 @@ class Test_Image_Viewer(QWidget):
             # Load orthorectified image
             ortho_image = cv2.imread(ortho_image_path)
             if ortho_image is not None:
-                self.current_image = ortho_image
+                self._warped_image = ortho_image.copy()
+                self.current_image = self._warped_image.copy()
                 self.is_orthorectified = True
                 self.update_display()
 
@@ -509,9 +647,6 @@ class Test_Image_Viewer(QWidget):
         """Get the current image path."""
         return self.image_path
 
-    def get_rpc_data(self):
-        """Get RPC data if available."""
-        return self.rpc_data
 
     def set_auto_stretch(self, enabled: bool):
         """Set auto-stretch mode."""
@@ -553,12 +688,18 @@ class Test_Image_Viewer(QWidget):
         self.apply_image_adjustments()
 
     def apply_image_adjustments(self):
-        """Apply current image adjustments to the original image."""
+        """Apply current image adjustments to the appropriate base image."""
         if self.original_image is None:
             return
 
-        # Start with original image
-        adjusted = self.original_image.astype(np.float32)
+        # Use warped image as base if in ortho mode, otherwise use original
+        if self.is_orthorectified and self._warped_image is not None:
+            base_image = self._warped_image
+        else:
+            base_image = self.original_image
+
+        # Start with base image
+        adjusted = base_image.astype(np.float32)
 
         # Apply auto-stretch if enabled
         if self.auto_stretch:
@@ -656,5 +797,3 @@ class Test_Image_Viewer(QWidget):
         """Cleanup resources when viewer is destroyed."""
         if hasattr(self, 'async_loader'):
             self.async_loader.shutdown()
-        if hasattr(self, 'loading_indicator'):
-            self.loading_indicator.stop_animation()

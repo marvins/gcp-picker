@@ -37,6 +37,7 @@ class Image_View_Control_Panel(QWidget):
     contrast_changed = Signal(float)  # 0.0 to 2.0
     auto_stretch_toggled = Signal(bool)
     reset_requested = Signal()
+    recompute_bounds_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -53,12 +54,20 @@ class Image_View_Control_Panel(QWidget):
         title_label.setFont(QFont("Arial", 10, QFont.Bold))
         layout.addWidget(title_label)
 
-        # Auto-stretch checkbox
+        # Auto-stretch checkbox with update button
+        auto_stretch_layout = QHBoxLayout()
         self.auto_stretch_checkbox = QCheckBox("Auto-stretch (DRA)")
         self.auto_stretch_checkbox.setToolTip("Automatically stretch pixel values to full range")
         self.auto_stretch_checkbox.setChecked(True)  # Enable DRA by default
         self.auto_stretch_checkbox.toggled.connect(self._on_auto_stretch_toggled)
-        layout.addWidget(self.auto_stretch_checkbox)
+        auto_stretch_layout.addWidget(self.auto_stretch_checkbox)
+
+        self.update_bounds_btn = QPushButton("Update Bounds")
+        self.update_bounds_btn.setToolTip("Re-compute DRA bounds for local view")
+        self.update_bounds_btn.clicked.connect(lambda: self.recompute_bounds_requested.emit())
+        auto_stretch_layout.addWidget(self.update_bounds_btn)
+
+        layout.addLayout(auto_stretch_layout)
 
         # Pixel range group
         range_group = QGroupBox("Pixel Range")

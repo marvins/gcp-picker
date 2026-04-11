@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from tmns.geo.coord import Geographic, Pixel
-from tmns.geo.projector import Transformation_Type, Identity, GCP
+from tmns.geo.proj import Transformation_Type, Identity, Affine, GCP
 
 
 class Simple_Camera_Model:
@@ -199,7 +199,7 @@ class Test_Camera_Integration:
         assert max(y_coords) > min(y_coords)
 
         # Test with affine projector for oblique case
-        projector = Affine_Projection()
+        projector = Affine()
 
         # Create a simple affine transformation
         transform_matrix = [
@@ -285,7 +285,7 @@ class Test_Camera_Integration:
             gcps.append(gcp)
 
         # Test with identity projector
-        identity_proj = Identity_Projection()
+        identity_proj = Identity()
 
         # Roundtrip validation: source → geographic → source
         tolerance = 1e-6
@@ -336,7 +336,7 @@ class Test_Camera_Integration:
             [0.0, 0.0, 1.0]
         ]
 
-        projector = Affine_Projection()
+        projector = Affine()
         projector.update_model(transform_matrix)
 
         # Test that the transformation works

@@ -34,6 +34,7 @@ class GCP_Manager(QWidget):
     gcp_removed = Signal(int)  # gcp_id
     gcp_selected = Signal(int)  # gcp_id
     gcp_updated = Signal(object)  # GCP object
+    gcp_navigate = Signal(int)  # gcp_id — double-click to navigate
 
     def __init__(self):
         super().__init__()
@@ -45,20 +46,22 @@ class GCP_Manager(QWidget):
     def setup_ui(self):
         """Setup the UI layout."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(3)
 
         # Header
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
 
         title_label = QLabel("Ground Control Points")
-        title_label.setFont(QFont("Arial", 10, QFont.Bold))
+        title_label.setFont(QFont("Arial", 8, QFont.Bold))
         header_layout.addWidget(title_label)
 
         header_layout.addStretch()
 
         # GCP count label
         self.count_label = QLabel("0 GCPs")
-        self.count_label.setStyleSheet("QLabel { color: gray; font-size: 9pt; }")
+        self.count_label.setStyleSheet("QLabel { color: gray; font-size: 8pt; }")
         header_layout.addWidget(self.count_label)
 
         layout.addLayout(header_layout)
@@ -70,52 +73,73 @@ class GCP_Manager(QWidget):
             "ID", "Test X", "Test Y", "Ref X", "Ref Y", "Lon", "Lat"
         ])
 
+        # Compact font and row height
+        table_font = QFont("Arial", 8)
+        self.gcp_table.setFont(table_font)
+        self.gcp_table.horizontalHeader().setFont(QFont("Arial", 8, QFont.Bold))
+        self.gcp_table.verticalHeader().setDefaultSectionSize(20)
+        self.gcp_table.verticalHeader().setVisible(False)
+        self.gcp_table.setShowGrid(False)
+        self.gcp_table.setAlternatingRowColors(True)
+        self.gcp_table.setStyleSheet("""
+            QTableWidget { border: none; }
+            QHeaderView::section { padding: 2px 4px; border: none; border-bottom: 1px solid #ccc; background: #f0f0f0; }
+        """)
+
         # Setup table properties
         self.gcp_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.gcp_table.setSelectionMode(QTableWidget.SingleSelection)
         self.gcp_table.itemSelectionChanged.connect(self.on_selection_changed)
         self.gcp_table.itemChanged.connect(self.on_item_changed)
+        self.gcp_table.itemDoubleClicked.connect(self.on_item_double_clicked)
 
-        # Resize columns
+        # Resize columns — Lon/Lat get interactive stretch, others fixed
         header = self.gcp_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # ID
-        header.setSectionResizeMode(1, QHeaderView.Stretch)  # Test X
-        header.setSectionResizeMode(2, QHeaderView.Stretch)  # Test Y
-        header.setSectionResizeMode(3, QHeaderView.Stretch)  # Ref X
-        header.setSectionResizeMode(4, QHeaderView.Stretch)  # Ref Y
-        header.setSectionResizeMode(5, QHeaderView.Stretch)  # Lon
-        header.setSectionResizeMode(6, QHeaderView.Stretch)  # Lat
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Test X
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Test Y
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Ref X
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Ref Y
+        header.setSectionResizeMode(5, QHeaderView.Stretch)           # Lon
+        header.setSectionResizeMode(6, QHeaderView.Stretch)           # Lat
 
         layout.addWidget(self.gcp_table)
 
         # Control buttons
         button_layout = QHBoxLayout()
 
+        btn_style = "QPushButton { font-size: 8pt; padding: 2px 6px; }"
+
         self.add_btn = QPushButton("Add GCP")
+        self.add_btn.setStyleSheet(btn_style)
         self.add_btn.clicked.connect(self.manual_add_gcp)
         button_layout.addWidget(self.add_btn)
 
         self.remove_btn = QPushButton("Remove")
+        self.remove_btn.setStyleSheet(btn_style)
         self.remove_btn.clicked.connect(self.remove_selected_gcp)
         self.remove_btn.setEnabled(False)
         button_layout.addWidget(self.remove_btn)
 
         self.clear_btn = QPushButton("Clear All")
+        self.clear_btn.setStyleSheet(btn_style)
         self.clear_btn.clicked.connect(self.clear_all_gcps)
         button_layout.addWidget(self.clear_btn)
 
         button_layout.addStretch()
 
         # Auto-add checkbox
-        self.auto_add_checkbox = QCheckBox("Auto-add from pending points")
+        self.auto_add_checkbox = QCheckBox("Auto")
+        self.auto_add_checkbox.setToolTip("Auto-add GCP from pending points")
         self.auto_add_checkbox.setChecked(True)
+        self.auto_add_checkbox.setStyleSheet("QCheckBox { font-size: 8pt; }")
         button_layout.addWidget(self.auto_add_checkbox)
 
         layout.addLayout(button_layout)
 
         # Accuracy info
         self.accuracy_label = QLabel("RMSE: N/A")
-        self.accuracy_label.setStyleSheet("QLabel { color: blue; font-size: 9pt; }")
+        self.accuracy_label.setStyleSheet("QLabel { color: #0055cc; font-size: 8pt; padding: 1px 2px; }")
         layout.addWidget(self.accuracy_label)
 
     def add_gcp(self, gcp):
@@ -174,8 +198,16 @@ class GCP_Manager(QWidget):
         if current_row >= 0:
             gcp_id_item = self.gcp_table.item(current_row, 0)
             if gcp_id_item:
-                gcp_id = int(gcp_id_item.text())
-                self.remove_gcp(gcp_id)
+                # Check if this is a pending point
+                if gcp_id_item.text() == "PENDING":
+                    # Remove the pending point row directly
+                    self.gcp_table.removeRow(current_row)
+                    # Update count to remove pending indicator
+                    self.update_count()
+                else:
+                    # Remove a regular GCP
+                    gcp_id = int(gcp_id_item.text())
+                    self.remove_gcp(gcp_id)
 
     def remove_gcp(self, gcp_id):
         """Remove a GCP by ID."""
@@ -216,10 +248,30 @@ class GCP_Manager(QWidget):
                 return int(gcp_id_item.text())
         return None
 
+    def select_gcp_by_id(self, gcp_id: int):
+        """Select the table row corresponding to gcp_id."""
+        for row in range(self.gcp_table.rowCount()):
+            item = self.gcp_table.item(row, 0)
+            if item and item.text() == str(gcp_id):
+                self.gcp_table.setCurrentCell(row, 0)
+                return
+
+    def on_item_double_clicked(self, item):
+        """Emit gcp_navigate when the user double-clicks a GCP row."""
+        gcp_id = self.get_selected_gcp_id()
+        if gcp_id is not None:
+            self.gcp_navigate.emit(gcp_id)
+
     def on_selection_changed(self):
         """Handle table selection change."""
         gcp_id = self.get_selected_gcp_id()
-        self.remove_btn.setEnabled(gcp_id is not None)
+        current_row = self.gcp_table.currentRow()
+
+        # Enable remove button if we have a real GCP or a pending point
+        has_selection = (gcp_id is not None) or (current_row >= 0 and
+                        self.gcp_table.item(current_row, 0) and
+                        self.gcp_table.item(current_row, 0).text() == "PENDING")
+        self.remove_btn.setEnabled(has_selection)
 
         if gcp_id is not None:
             self.gcp_selected.emit(gcp_id)

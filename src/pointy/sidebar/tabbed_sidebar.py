@@ -23,7 +23,6 @@ from qtpy.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
 from pointy.sidebar.components.gcp_panel import GCP_Panel
 from pointy.sidebar.components.metadata_panel import Metadata_Panel
-from pointy.sidebar.components.status_panel import Status_Panel
 from pointy.sidebar.components.tools_panel import Tools_Panel
 from pointy.sidebar.components.transformation_status_panel import Transformation_Status_Panel
 from pointy.sidebar.components.view_control_panel import Image_View_Control_Panel
@@ -67,9 +66,6 @@ class Tabbed_Sidebar(QWidget):
         info_layout = QVBoxLayout(info_widget)
         info_layout.setContentsMargins(5, 5, 5, 5)
         info_layout.setSpacing(10)
-
-        self.status_panel = Status_Panel()
-        info_layout.addWidget(self.status_panel)
 
         self.collection_nav_panel = Collection_Nav_Panel()
         info_layout.addWidget(self.collection_nav_panel)
@@ -159,10 +155,6 @@ class Tabbed_Sidebar(QWidget):
     def get_tools_panel(self) -> Tools_Panel:
         """Get the tools panel component."""
         return self.tools_panel
-
-    def get_status_panel(self) -> Status_Panel:
-        """Get the status panel component."""
-        return self.status_panel
 
     def get_collection_nav_panel(self) -> Collection_Nav_Panel:
         """Get the collection navigation panel component."""

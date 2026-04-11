@@ -16,34 +16,25 @@
 Main Window for Pointy-McPointface Application
 """
 
-#  Python Standard Libraries
-import logging
-import time
-import tempfile
-import tomllib  # Python 3.11+ for reading TOML
-from tomli_w import dump as toml_dump  # For writing TOML
-from pathlib import Path
-
 #  Third-Party Libraries
-import numpy as np
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QKeySequence, QGuiApplication, QIcon
 from qtpy.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-                        QSplitter, QStatusBar, QFileDialog,
-                        QMessageBox, QToolBar, QAction)
+                        QSplitter, QStatusBar, QToolBar, QAction, QMessageBox)
 
 #  Project Libraries
 from pointy import resources
 from pointy.viewers.test_image_viewer import Test_Image_Viewer
-from pointy.viewers.reference_viewer import Reference_Viewer
 from pointy.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
 from pointy.widgets.gcp_manager import GCP_Manager
 from pointy.widgets.about_dialog import show_about_dialog
 from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
 from pointy.core.gcp_processor import GCP_Processor
-from pointy.core.orthorectifier import Orthorectifier
 from pointy.core.collection_manager import Collection_Manager
-from pointy.core.imagery_api import Imagery_Loader
+from pointy.controllers.gcp_controller import GCP_Controller
+from pointy.controllers.image_controller import Image_Controller
+from pointy.controllers.ortho_controller import Ortho_Controller
+from pointy.controllers.sync_controller import Sync_Controller
 from pointy.resources import resources
 
 class Main_Window(QMainWindow):
@@ -77,16 +68,45 @@ class Main_Window(QMainWindow):
 
         # Initialize core components
         self.gcp_processor = GCP_Processor()
-        self.orthorectifier = Orthorectifier()
         self.collection_manager = Collection_Manager()
-        self._pending_seed_location = None
-        self.imagery_loader = Imagery_Loader()
 
         # Setup UI
         self.setup_ui()
         self.setup_menu_bar()
         self.setup_toolbar()
         self.setup_status_bar()
+
+        # Create controllers
+        self.sync_ctrl = Sync_Controller( test_viewer      = self.test_viewer,
+                                          reference_viewer = self.reference_viewer,
+                                          gcp_processor    = self.gcp_processor,
+                                          status_bar       = self.status_bar )
+
+        self.gcp_ctrl = GCP_Controller( gcp_processor      = self.gcp_processor,
+                                        gcp_manager        = self.gcp_manager,
+                                        gcp_panel          = self.gcp_panel,
+                                        test_viewer        = self.test_viewer,
+                                        reference_viewer   = self.reference_viewer,
+                                        collection_manager = self.collection_manager,
+                                        status_bar         = self.status_bar,
+                                        parent_widget      = self )
+
+        self.ortho_ctrl = Ortho_Controller( gcp_processor    = self.gcp_processor,
+                                            test_viewer      = self.test_viewer,
+                                            reference_viewer = self.reference_viewer,
+                                            sidebar          = self.sidebar,
+                                            ortho_action     = self.ortho_toggle_action,
+                                            status_bar       = self.status_bar,
+                                            parent_widget    = self )
+
+        self.image_ctrl = Image_Controller( test_viewer        = self.test_viewer,
+                                            reference_viewer   = self.reference_viewer,
+                                            sidebar            = self.sidebar,
+                                            collection_manager = self.collection_manager,
+                                            gcp_controller     = self.gcp_ctrl,
+                                            status_bar         = self.status_bar,
+                                            ortho_controller   = self.ortho_ctrl,
+                                            parent_widget      = self )
 
         # Connect signals
         self.connect_signals()
@@ -134,8 +154,6 @@ class Main_Window(QMainWindow):
         self.sidebar = Tabbed_Sidebar()
         self.gcp_panel = self.sidebar.get_gcp_panel()
         self.gcp_manager = self.gcp_panel.gcp_manager
-        self.status_panel = self.sidebar.get_status_panel()
-
         # Connect GCP panel lock signal
         self.gcp_panel.lock_state_changed.connect(self.on_gcp_lock_changed)
 
@@ -257,31 +275,19 @@ class Main_Window(QMainWindow):
 
     def connect_signals(self):
         """Connect signals between components."""
-        # Connect test viewer signals
-        self.test_viewer.image_loaded.connect(self.on_test_image_loaded)
-        self.test_viewer.cursor_moved.connect(self.on_test_cursor_moved)
-        self.test_viewer.gcp_point_clicked.connect(self.on_test_gcp_clicked)
-        self.test_viewer.point_selected.connect(self.on_test_point_selected)
-        self.test_viewer.image_loaded.connect(self._on_image_loaded_update_histogram)
-        self.test_viewer.image_adjusted.connect(self._on_image_adjusted_update_histogram)
+        # Delegated to controllers
+        self.sync_ctrl.connect()
+        self.gcp_ctrl.connect()
+        self.ortho_ctrl.connect()
+        self.image_ctrl.connect()
 
-        # Reference viewer signals
-        self.reference_viewer.point_selected.connect(self.on_reference_point_selected)
+        # GCP navigation — Sync_Controller
+        self.gcp_manager.gcp_navigate.connect(self.sync_ctrl.on_gcp_navigate)
+
+        # Reference loaded
         self.reference_viewer.reference_loaded.connect(self.on_reference_loaded)
 
-        # GCP manager signals
-        self.gcp_manager.gcp_added.connect(self.on_gcp_added)
-        self.gcp_manager.gcp_removed.connect(self.on_gcp_removed)
-        self.gcp_manager.gcp_selected.connect(self.on_gcp_selected)
-
-        # GCP panel toolbar signals
-        self.gcp_panel.save_gcps_requested.connect(self.save_gcps)
-        self.gcp_panel.load_gcps_requested.connect(self.load_gcps)
-        self.gcp_panel.clear_gcps_requested.connect(self.clear_all_gcps)
-        self.gcp_panel.create_gcp_requested.connect(self.create_gcp_from_pending_points)
-        self.gcp_panel.export_gcps_requested.connect(self.export_gcps)
-
-        # View control panel signals
+        # View control panel — thin pass-throughs that belong to no controller
         view_panel = self.sidebar.get_view_control_panel()
         view_panel.min_pixel_changed.connect(self.on_min_pixel_changed)
         view_panel.max_pixel_changed.connect(self.on_max_pixel_changed)
@@ -290,474 +296,46 @@ class Main_Window(QMainWindow):
         view_panel.auto_stretch_toggled.connect(self.on_auto_stretch_toggled)
         view_panel.reset_requested.connect(self.on_view_reset_requested)
 
-        # Metadata panel connections - cursor tracking
-        # Note: These signals need to be emitted by the viewers on mouse move
+        # Cursor tracking — metadata panel
         self.reference_viewer.cursor_moved.connect(self.on_reference_cursor_moved)
         self.test_viewer.cursor_moved.connect(self.on_test_cursor_moved)
 
-    def on_reference_point_selected(self, x, y, lon, lat):
-        """Handle reference point selection."""
-        # Check if GCP selection is locked
-        lock_state = self.gcp_panel.is_locked()
-        logging.debug(f"Reference point selection, lock state: {lock_state}")
-        if lock_state:
-            self.status_bar.showMessage('GCP selection is locked - unlock to select points')
-            return
-
-        logging.debug(f"Reference point selected at ({lon:.6f}, {lat:.6f})")
-        self.gcp_processor.set_pending_reference_point(x, y, lon, lat)
-        self.status_bar.showMessage(f'Reference point selected: ({lon:.6f}, {lat:.6f})')
-        self.update_reference_status(lat=lat, lon=lon)
-
-        # Show pending reference point in GCP panel
-        self.gcp_manager.show_pending_reference_point(x, y, lon, lat)
-
-        # Auto-create GCP if test point is also pending
-        if self.gcp_processor.has_pending_test_point():
-            logging.debug("Auto-creating GCP (reference point second)")
-            self.create_gcp_from_pending_points()
-
-    def on_test_point_selected(self, x, y):
-        """Handle test image point selection."""
-        # Check if GCP selection is locked
-        lock_state = self.gcp_panel.is_locked()
-        if lock_state:
-            self.status_bar.showMessage('GCP selection is locked - unlock to select points')
-            return
-
-        self.gcp_processor.set_pending_test_point(x, y)
-        self.status_bar.showMessage(f'Test point selected: ({x:.1f}, {y:.1f})')
-        self.update_test_status(x=x, y=y)
-
-        # Show red circle on test image
-        self.test_viewer.image_view.set_pending_test_point(int(x), int(y))
-
-        # Show pending point in GCP panel
-        self.gcp_manager.show_pending_test_point(x, y)
-
-        # Auto-create GCP if reference point is also pending
-        if self.gcp_processor.has_pending_reference_point():
-            self.create_gcp_from_pending_points()
-
-    def on_test_image_loaded(self, image_path):
-        """Handle test image loading."""
-        self.gcp_processor.set_test_image_path(image_path)
-
-        # Handle seed location if pending
-        if self._pending_seed_location:
-            lat, lon = self._pending_seed_location
-            self.reference_viewer.set_center(lat, lon)
-            self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
-            self._pending_seed_location = None
-        else:
-            self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
-
-        # Apply DRA if auto-stretch is enabled
-        view_panel = self.sidebar.get_view_control_panel()
-        if view_panel.is_auto_stretch():
-            self.test_viewer.set_auto_stretch(True)
-
-    def on_reference_loaded(self, reference_info):
-        """Handle reference source loading."""
-        self.gcp_processor.set_reference_info(reference_info)
-        self.status_bar.showMessage(f'Reference loaded: {reference_info.get("name", "Unknown")}')
-
-    def update_reference_status(self, zoom_level=None, lat=None, lon=None):
-        """Update reference viewer status bar."""
-        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
-        lat_text = f"Lat: {lat:.6f}" if lat else "Lat: N/A"
-        lon_text = f"Lon: {lon:.6f}" if lon else "Lon: N/A"
-        self.status_bar.showMessage(f"Reference {zoom_text} | {lat_text} | {lon_text}")
-
-    def update_test_status(self, zoom_level=None, x=None, y=None):
-        """Update test viewer status bar."""
-        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
-        x_text = f"X: {x:.1f}" if x is not None else "X: N/A"
-        y_text = f"Y: {y:.1f}" if y is not None else "Y: N/A"
-        self.status_bar.showMessage(f"Test {zoom_text} | {x_text} | {y_text}")
-
-    def save_gcps(self):
-        """Save GCPs to file."""
-        if not self.gcp_processor.has_gcps():
-            QMessageBox.information(self, 'Info', 'No GCPs to save')
-            return
-
-        if self.collection_manager.has_collection():
-            file_path = self.collection_manager.current_collection.gcp_file
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        else:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 'Save GCPs', '',
-                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
-            )
-            if not file_path:
-                return
-
-        try:
-            self.gcp_processor.save_gcps(file_path)
-            self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to {Path(file_path).name}')
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
-            self.status_bar.showMessage('Failed to save GCPs')
-
-    def export_gcps(self):
-        """Export GCPs to file."""
-        if not self.gcp_processor.has_gcps():
-            QMessageBox.information(self, 'Info', 'No GCPs to export')
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, 'Export GCPs', '',
-            'GCP Files (*.gcp *.txt);;CSV Files (*.csv);;All Files (*)'
-        )
-
-        if file_path:
-            try:
-                self.gcp_processor.save_gcps(file_path)
-                self.status_bar.showMessage(f'Exported {self.gcp_processor.gcp_count()} GCPs to file')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to export GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to export GCPs')
-
-    def load_gcps(self):
-        """Load GCPs from file."""
-        if self.collection_manager.has_collection():
-            file_path = self.collection_manager.current_collection.gcp_file
-            if not Path(file_path).exists():
-                self.status_bar.showMessage(f'GCP file not found: {Path(file_path).name}')
-                return
-        else:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, 'Load GCPs', '',
-                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
-            )
-            if not file_path:
-                return
-
-        try:
-            self.gcp_processor.load_gcps(file_path)
-            self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
-            self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from {Path(file_path).name}')
-
-            if self.ortho_toggle_action.isChecked():
-                self.perform_orthorectification()
-
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
-            self.status_bar.showMessage('Failed to load GCPs')
-
-    def clear_all_gcps(self):
-        """Clear all GCPs."""
-        reply = QMessageBox.question(
-            self, 'Confirm', 'Clear all ground control points?',
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            # Clear GCP processor
-            if hasattr(self.gcp_processor, 'clear_gcps'):
-                self.gcp_processor.clear_gcps()
-
-            # Clear GCP manager widget
-            if hasattr(self.gcp_manager, 'clear_all_gcps'):
-                self.gcp_manager.clear_all_gcps()
-                self.status_bar.showMessage(f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})')
-                self._pending_seed_location = None
-            else:
-                self.status_bar.showMessage(f'Loaded: {Path(image_path).name}')
-
-            # Apply DRA if auto-stretch is enabled
-            view_panel = self.sidebar.get_view_control_panel()
-            if view_panel.is_auto_stretch():
-                self.test_viewer.set_auto_stretch(True)
-
-    def on_test_gcp_clicked(self, gcp_id):
-        """Handle GCP point click in test viewer."""
-        self.gcp_manager.select_gcp(gcp_id)
-
-    def on_reference_loaded(self, reference_info):
-        """Handle reference source loading."""
-        self.gcp_processor.set_reference_info(reference_info)
-        self.status_bar.showMessage(f'Reference loaded: {reference_info.get("name", "Unknown")}')
-
-    def update_reference_status(self, zoom_level=None, lat=None, lon=None):
-        """Update reference viewer status bar."""
-        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
-        lat_text = f"Lat: {lat:.6f}" if lat else "Lat: N/A"
-        lon_text = f"Lon: {lon:.6f}" if lon else "Lon: N/A"
-        self.status_bar.showMessage(f"Reference {zoom_text} | {lat_text} | {lon_text}")
-
-    def update_test_status(self, zoom_level=None, x=None, y=None):
-        """Update test viewer status bar."""
-        zoom_text = f"Zoom: {zoom_level}%" if zoom_level else "Zoom: 100%"
-        x_text = f"X: {x:.1f}" if x is not None else "X: N/A"
-        y_text = f"Y: {y:.1f}" if y is not None else "Y: N/A"
-        self.status_bar.showMessage(f"Test {zoom_text} | {x_text} | {y_text}")
-
-    def save_gcps(self):
-        """Save GCPs to file."""
-        if not self.gcp_processor.has_gcps():
-            QMessageBox.information(self, 'Info', 'No GCPs to save')
-            return
-
-        if self.collection_manager.has_collection():
-            file_path = self.collection_manager.current_collection.gcp_file
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
-        else:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 'Save GCPs', '',
-                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
-            )
-            if not file_path:
-                return
-
-        try:
-            self.gcp_processor.save_gcps(file_path)
-            self.status_bar.showMessage(f'Saved {self.gcp_processor.gcp_count()} GCPs to {Path(file_path).name}')
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to save GCPs:\n{str(e)}')
-            self.status_bar.showMessage('Failed to save GCPs')
-
-    def export_gcps(self):
-        """Export GCPs to file."""
-        if not self.gcp_processor.has_gcps():
-            QMessageBox.information(self, 'Info', 'No GCPs to export')
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self, 'Export GCPs', '',
-            'GCP Files (*.gcp *.txt);;CSV Files (*.csv);;All Files (*)'
-        )
-
-        if file_path:
-            try:
-                self.gcp_processor.save_gcps(file_path)
-                self.status_bar.showMessage(f'Exported {self.gcp_processor.gcp_count()} GCPs to file')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to export GCPs:\n{str(e)}')
-                self.status_bar.showMessage('Failed to export GCPs')
-
-    def load_gcps(self):
-        """Load GCPs from file."""
-        if self.collection_manager.has_collection():
-            file_path = self.collection_manager.current_collection.gcp_file
-            if not Path(file_path).exists():
-                self.status_bar.showMessage(f'GCP file not found: {Path(file_path).name}')
-                return
-        else:
-            file_path, _ = QFileDialog.getOpenFileName(
-                self, 'Load GCPs', '',
-                'GCP Files (*.json *.gcp *.txt);;All Files (*)'
-            )
-            if not file_path:
-                return
-
-        try:
-            self.gcp_processor.load_gcps(file_path)
-            self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
-            self.status_bar.showMessage(f'Loaded {self.gcp_processor.gcp_count()} GCPs from {Path(file_path).name}')
-
-            if self.ortho_toggle_action.isChecked():
-                self.perform_orthorectification()
-
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to load GCPs:\n{str(e)}')
-            self.status_bar.showMessage('Failed to load GCPs')
-
-    def clear_all_gcps(self):
-        """Clear all GCPs."""
-        reply = QMessageBox.question(
-            self, 'Confirm', 'Clear all ground control points?',
-            QMessageBox.Yes | QMessageBox.No
-        )
-
-        if reply == QMessageBox.Yes:
-            # Clear GCP processor
-            if hasattr(self.gcp_processor, 'clear_gcps'):
-                self.gcp_processor.clear_gcps()
-
-            # Clear GCP manager widget
-            if hasattr(self.gcp_manager, 'clear_all_gcps'):
-                self.gcp_manager.clear_all_gcps()
-            else:
-                logging.warning("GCP manager does not have clear_all_gcps method")
-
-            # Clear viewer points
-            if hasattr(self.test_viewer, 'clear_points'):
-                self.test_viewer.clear_points()
-
-            if hasattr(self.reference_viewer, 'clear_points'):
-                self.reference_viewer.clear_points()
-
-            self.status_bar.showMessage('Cleared all GCPs')
-
-    def toggle_orthorectification(self, enabled):
-        """Toggle orthorectification on/off."""
-        if enabled and self.gcp_processor.gcp_count() >= 3:
-            self.perform_orthorectification()
-        elif enabled:
-            self.ortho_toggle_action.setChecked(False)
-            QMessageBox.information(self, 'Info', 'Need at least 3 GCPs for orthorectification')
-
-    def perform_orthorectification(self):
-        """Perform orthorectification using current GCPs."""
-        if not self.test_viewer.has_image():
-            return
-
-        try:
-            self.status_bar.showMessage('Performing orthorectification...')
-            gcps = self.gcp_processor.get_gcps()
-            self.orthorectifier.orthorectify(
-                self.test_viewer.get_image_path(),
-                gcps,
-                self.test_viewer.get_rpc_data()
-            )
-
-            # Get the projector from orthorectifier and set it
-            projector = self.orthorectifier.get_projector()
-            if projector:
-                self.set_projector(projector)
-
-            self.status_bar.showMessage('Orthorectification completed')
-
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Orthorectification failed:\n{str(e)}')
-            self.status_bar.showMessage('Orthorectification failed')
-
-    def set_projector(self, projector):
-        """Set the projector for coordinate transformations."""
-        self.gcp_processor.set_projector(projector)
-        self.test_viewer.set_projector(projector)
-        # Reference viewer might also need projector in the future
-
-    def _on_image_loaded_update_histogram(self, image_path):
-        """Update histogram when image is loaded."""
-        start_time = time.time()
-
-        logging.info(f"Updating histogram for image: {image_path}")
-
-        # Get image data from test viewer
-        if hasattr(self.test_viewer, 'get_image_data'):
-            data_start = time.time()
-            image_data = self.test_viewer.get_image_data()
-            logging.info(f"Getting image data took: {time.time() - data_start:.3f}s")
-
-            if image_data is not None:
-                logging.info(f"Got image data with shape: {image_data.shape}, dtype: {image_data.dtype}")
-
-                panel_start = time.time()
-                view_panel = self.sidebar.get_view_control_panel()
-                logging.info(f"Getting view panel took: {time.time() - panel_start:.3f}s")
-
-                # Set pixel range based on image bit depth
-                if hasattr(self.test_viewer, 'bit_depth'):
-                    bit_depth = self.test_viewer.bit_depth
-                    max_pixel = (2 ** bit_depth) - 1
-                    logging.info(f"Detected bit depth: {bit_depth}, max pixel: {max_pixel}")
-
-                    # Set the range and get actual data min/max
-                    range_start = time.time()
-                    view_panel.set_min_max_range(0, max_pixel)
-                    logging.info(f"Set min/max range to 0-{max_pixel} in {time.time() - range_start:.3f}s")
-
-                    # Calculate actual pixel range from the image data
-                    calc_start = time.time()
-                    actual_min = int(np.min(image_data))
-                    actual_max = int(np.max(image_data))
-                    logging.info(f"Actual data range: {actual_min}-{actual_max} (calc took {time.time() - calc_start:.3f}s)")
-
-                    # Set the spin boxes to actual data range
-                    spin_start = time.time()
-                    view_panel.min_pixel_spin.setValue(actual_min)
-                    view_panel.max_pixel_spin.setValue(actual_max)
-                    logging.info(f"Set spin boxes to actual range: {actual_min}-{actual_max} in {time.time() - spin_start:.3f}s")
-
-                    # Enable the controls for manual adjustment
-                    if not view_panel.auto_stretch_checkbox.isChecked():
-                        view_panel.min_pixel_spin.setEnabled(True)
-                        view_panel.max_pixel_spin.setEnabled(True)
-
-                    # Update histogram with proper bit depth consideration
-                    num_bins = min(256, max_pixel + 1)
-                    hist_start = time.time()
-                    view_panel.update_histogram(image_data, num_bins=num_bins)
-                    logging.info(f"Histogram update with {num_bins} bins took: {time.time() - hist_start:.3f}s")
-                else:
-                    logging.warning("No bit depth attribute found on test viewer")
-                    hist_start = time.time()
-                    view_panel.update_histogram(image_data)
-                    logging.info(f"Histogram update (default) took: {time.time() - hist_start:.3f}s")
-            else:
-                logging.warning("No image data available from test viewer")
-        else:
-            logging.warning("Test viewer has no get_image_data method")
-
-        total_time = time.time() - start_time
-        logging.info(f"Total histogram update took: {total_time:.3f}s")
-
-    def _on_image_adjusted_update_histogram(self):
-        """Update histogram when image adjustments are applied."""
-        # Get current image data from test viewer
-        if hasattr(self.test_viewer, 'get_image_data'):
-            image_data = self.test_viewer.get_image_data()
-            if image_data is not None:
-                view_panel = self.sidebar.get_view_control_panel()
-
-                # Update histogram with current (adjusted) image data
-                if hasattr(self.test_viewer, 'bit_depth'):
-                    bit_depth = self.test_viewer.bit_depth
-                    max_pixel = (2 ** bit_depth) - 1
-                    view_panel.update_histogram(image_data, num_bins=min(256, max_pixel + 1))
-                else:
-                    view_panel.update_histogram(image_data)
-
     def on_gcp_lock_changed(self, is_locked: bool):
         """Handle GCP panel lock state changes."""
-        logging.debug(f"Main window received lock change: {is_locked}")
-        if is_locked:
-            self.status_bar.showMessage('GCP selection is locked - points disabled')
+        msg = 'GCP selection is locked - points disabled' if is_locked else 'GCP selection is unlocked - points enabled'
+        self.status_bar.showMessage(msg)
+
+    def on_fit_requested(self, model_name: str):
+        """Delegate model fitting to Ortho_Controller."""
+        self.ortho_ctrl.on_fit_requested(model_name)
+
+    def load_first_collection_image(self):
+        """Delegate to Image_Controller."""
+        self.image_ctrl._load_first_collection_image()
+
+    def save_gcps(self):
+        """Delegate to GCP_Controller."""
+        self.gcp_ctrl.save_gcps()
+
+    def load_gcps(self):
+        """Delegate to GCP_Controller."""
+        self.gcp_ctrl.load_gcps()
+
+    def clear_all_gcps(self):
+        """Delegate to GCP_Controller."""
+        self.gcp_ctrl.clear_all_gcps()
+
+    def toggle_orthorectification(self, enabled: bool):
+        """Delegate ortho toggle to Ortho_Controller."""
+        if enabled:
+            self.ortho_ctrl.perform_orthorectification()
         else:
-            self.status_bar.showMessage('GCP selection is unlocked - points enabled')
+            self.ortho_ctrl.on_view_mode_changed(False)
 
-    def on_gcp_added(self, gcp):
-        """Handle GCP addition."""
-        self.gcp_processor.add_gcp(gcp)
-
-        # Add visual markers using projector for test image
-        transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(
-            gcp.test_pixel.x_px, gcp.test_pixel.y_px
-        )
-        self.test_viewer.image_view.add_gcp_point(gcp.id, int(transformed_x), int(transformed_y))
-        self.reference_viewer.add_gcp_point(gcp.reference_pixel.x_px, gcp.reference_pixel.y_px, gcp.id)
-
-        self.status_bar.showMessage(f'Added GCP {gcp.id}')
-
-        # Trigger orthorectification if enabled and we have enough points
-        if (self.ortho_toggle_action.isChecked() and
-            self.gcp_processor.gcp_count() >= 3):
-            self.perform_orthorectification()
-
-    def on_gcp_removed(self, gcp_id):
-        """Handle GCP removal."""
-        self.gcp_processor.remove_gcp(gcp_id)
-
-        # Remove visual markers
-        self.test_viewer.remove_gcp_point(gcp_id)
-        self.reference_viewer.remove_gcp_point(gcp_id)
-
-        self.status_bar.showMessage(f'Removed GCP {gcp_id}')
-
-    def on_gcp_selected(self, gcp_id):
-        """Handle GCP selection."""
-        gcp = self.gcp_processor.get_gcp(gcp_id)
-        if gcp:
-            # Transform coordinates using projector for test image
-            transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(
-                gcp.test_pixel.x_px, gcp.test_pixel.y_px
-            )
-            self.test_viewer.highlight_gcp_point(int(transformed_x), int(transformed_y))
-            self.reference_viewer.highlight_gcp_point(gcp.reference_pixel.x_px, gcp.reference_pixel.y_px)
-            self.status_panel.update_gcp_info(gcp)
+    def on_reference_loaded(self, reference_info):
+        """Handle reference source loading."""
+        self.gcp_processor.set_reference_info(reference_info)
+        self.status_bar.showMessage(f'Reference loaded: {reference_info.get("name", "Unknown")}')
 
     def on_min_pixel_changed(self, value: int):
         """Handle minimum pixel value change."""
@@ -792,221 +370,41 @@ class Main_Window(QMainWindow):
         """Handle cursor movement over test viewer."""
         self.sidebar.get_metadata_panel().update_test_metadata(x, y, pixel_value, lat, lon, alt)
 
-    def on_orthorectification_complete(self, ortho_image_path):
-        """Handle orthorectification completion."""
-        self.test_viewer.update_orthorectified_image(ortho_image_path)
-        self.status_bar.showMessage(f'Orthorectification complete: {Path(ortho_image_path).name}')
-
-    def create_gcp_from_pending_points(self):
-        """Create a GCP from pending test and reference points."""
-        test_point = self.gcp_processor.get_pending_test_point()
-        ref_point = self.gcp_processor.get_pending_reference_point()
-
-        if test_point and ref_point:
-            gcp = self.gcp_processor.create_gcp_from_pending()
-            self.gcp_manager.add_gcp(gcp)
-
-            # Add GCP to test viewer display using projector
-            test_x, test_y = test_point
-            transformed_x, transformed_y = self.gcp_processor.transform_test_coordinates(test_x, test_y)
-            self.test_viewer.image_view.add_gcp_point(gcp.id, int(transformed_x), int(transformed_y))
-
-            # Clear pending test point display
-            self.test_viewer.image_view.clear_pending_test_point()
-
-            # Clear pending point from GCP panel
-            self.gcp_manager.clear_pending_point()
-
-            # Provide user feedback
-            self.status_bar.showMessage(f'GCP {gcp.id} created automatically')
-
-            # Clear pending points
-            self.gcp_processor.clear_pending_points()
-
     def show_about(self):
         """Show about dialog."""
         show_about_dialog(self)
 
     def load_collection_from_path(self, collection_path: str):
         """Load a collection from a specific path (used by CLI)."""
-        success = self.collection_manager.load_collection(collection_path)
-        if success:
-            self.status_bar.showMessage(f'Loaded collection: {self.collection_manager.current_collection.name}')
-            self.load_first_collection_image()
-            # Auto-load GCPs from collection config if the file already exists
-            gcp_file = self.collection_manager.current_collection.gcp_file
-            if Path(gcp_file).exists():
-                try:
-                    self.gcp_processor.load_gcps(gcp_file)
-                    self.gcp_manager.update_gcp_list(self.gcp_processor.get_gcps())
-                    logging.info(f"Auto-loaded {self.gcp_processor.gcp_count()} GCPs from {gcp_file}")
-                    self.status_bar.showMessage(
-                        f'Loaded collection with {self.gcp_processor.gcp_count()} GCPs'
-                    )
-                except Exception as e:
-                    logging.warning(f"Could not auto-load GCPs from {gcp_file}: {e}")
-        else:
-            QMessageBox.critical(self, 'Error', f'Failed to load collection: {collection_path}')
-            self.status_bar.showMessage('Failed to load collection')
+        self.image_ctrl.load_collection_from_path(collection_path)
 
     def load_collection(self):
         """Load a collection configuration file via file dialog."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Load Collection', '',
-            'TOML Files (*.toml);;All Files (*)'
-        )
-
-        if file_path:
-            self.load_collection_from_path(file_path)
-
-    def load_first_collection_image(self):
-        """Load the first image from the collection and set seed location."""
-        if not self.collection_manager.has_collection():
-            return
-
-        first_image = self.collection_manager.get_first_image()
-        if not first_image:
-            QMessageBox.information(self, 'Info', 'No images found in collection')
-            return
-
-        # Check if image needs seed location
-        self.imagery_loader.needs_seed_location(first_image)
-
-        # Get collection seed location
-        seed_location = self.collection_manager.get_collection_seed_location()
-
-        # Load the image
-        try:
-            self.test_viewer.load_image(first_image)
-            self.status_bar.showMessage(f'Loaded: {Path(first_image).name}')
-
-            # Always center reference viewer on collection location
-            seed_location = self.collection_manager.get_collection_seed_location()
-            if seed_location:
-                lat, lon = seed_location
-                self.reference_viewer.recreate_map_with_center(lat, lon)
-                self.status_bar.showMessage(f'Centered on collection: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}')
-
-            # Update navigation counter
-            self._update_nav_counter()
-
-        except Exception as e:
-            QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
-            self.status_bar.showMessage('Failed to load collection image')
-            raise
+        self.image_ctrl.load_collection()
 
     def load_next_collection_image(self):
         """Load next image in collection."""
-        next_image = self.collection_manager.get_next_image()
-        if next_image:
-            self._load_collection_image(next_image)
-        else:
-            self.status_bar.showMessage('Already at last image in collection')
+        self.image_ctrl.load_next_collection_image()
 
     def load_previous_collection_image(self):
         """Load previous image in collection."""
-        prev_image = self.collection_manager.get_previous_image()
-        if prev_image:
-            self._load_collection_image(prev_image)
-        else:
-            self.status_bar.showMessage('Already at first image in collection')
+        self.image_ctrl.load_previous_collection_image()
 
     def load_last_collection_image(self):
         """Load last image in collection."""
-        if not self.collection_manager.has_collection():
-            return
-
-        # Jump to last index
-        total = len(self.collection_manager.loaded_images)
-        if total > 0:
-            self.collection_manager.current_image_index = total - 1
-            last_image = self.collection_manager.get_current_image()
-            if last_image:
-                self._load_collection_image(last_image)
-        else:
-            self.status_bar.showMessage('No images in collection')
-
-    def _update_nav_counter(self):
-        """Update sidebar navigation counter."""
-        if self.collection_manager.has_collection():
-            current = self.collection_manager.current_image_index + 1
-            total = len(self.collection_manager.loaded_images)
-            self.sidebar.get_collection_nav_panel().update_counter(current, total)
-        else:
-            self.sidebar.get_collection_nav_panel().update_counter(0, 0)
-
-    def _load_collection_image(self, image_path: str):
-        """Helper to load a collection image with seed handling using async loader."""
-        needs_seed = self.imagery_loader.needs_seed_location(image_path)
-        seed_location = self.collection_manager.get_collection_seed_location()
-
-        # Use async loading to prevent GUI lockup
-        self.test_viewer.load_image(image_path)
-
-        # Handle seed location after image loads (via signal)
-        if needs_seed and seed_location:
-            lat, lon = seed_location
-            # Store seed info for post-load processing
-            self._pending_seed_location = (lat, lon)
-        else:
-            self._pending_seed_location = None
-
-        # Update navigation counter
-        self._update_nav_counter()
+        self.image_ctrl.load_last_collection_image()
 
     def open_test_image(self):
         """Open a single test image by creating a temporary collection."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, 'Open Test Image', '',
-            'Image Files (*.tif *.tiff *.jpg *.jpeg *.png *.img);;All Files (*)'
-        )
-
-        if file_path:
-            try:
-                # Create temporary collection for single image
-                temp_collection_path = self.create_single_image_collection(file_path)
-
-                # Load using existing collection workflow
-                self.load_collection_from_path(temp_collection_path)
-
-                # Clean up temporary file when done (optional - could keep for debugging)
-                # import os
-                # os.unlink(temp_collection_path)
-
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Failed to load image:\n{str(e)}')
-                self.status_bar.showMessage('Failed to load test image')
-
-    def create_single_image_collection(self, image_path):
-        """Create a temporary collection TOML for a single image."""
-        # Generate collection name from image filename
-        image_name = Path(image_path).stem
-
-        # Create collection data structure
-        collection_data = {
-            'collection': {
-                'name': f'Single Image - {image_name}',
-                'description': f'Temporary collection for single image: {image_name}',
-                'version': '1.0'
-            },
-            'imagery': [
-                {
-                    'name': image_name,
-                    'path': str(Path(image_path).absolute()),
-                    'source_type': 'test',
-                    'description': f'Single test image: {image_name}'
-                }
-            ]
-        }
-
-        # Create temporary TOML file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.toml', delete=False) as f:
-            toml_dump(collection_data, f)
-            temp_path = f.name
-
-        logging.info(f"Created temporary collection: {temp_path}")
-        return temp_path
+        self.image_ctrl.open_test_image()
 
     def post_init(self):
         """Post-initialization tasks."""
         self.status_bar.showMessage('Ready - Open a test image or load a collection to begin')
+
+    def closeEvent(self, event):
+        """Handle window close event - check for unsaved GCPs."""
+        if not self.gcp_ctrl.check_unsaved_before_exit():
+            event.ignore()
+        else:
+            event.accept()

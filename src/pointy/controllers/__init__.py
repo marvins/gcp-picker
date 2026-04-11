@@ -10,23 +10,24 @@
 #
 #    File:    __init__.py
 #    Author:  Marvin Smith
-#    Date:    4/3/2026
+#    Date:    04/10/2026
 #
 """
-Sidebar Components - Individual sidebar widget components
+Application controllers.
+
+Each controller owns a coherent cluster of business logic and the signal
+connections that drive it.  Main_Window creates controller instances and
+delegates to them — it does not contain logic itself.
 """
 
-# Project Libraries
-from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
-from pointy.sidebar.components.gcp_panel import GCP_Panel
-from pointy.sidebar.components.metadata_panel import Metadata_Panel
-from pointy.sidebar.components.tools_panel import Tools_Panel
-from pointy.sidebar.components.view_control_panel import Image_View_Control_Panel
+from pointy.controllers.gcp_controller import GCP_Controller
+from pointy.controllers.image_controller import Image_Controller
+from pointy.controllers.ortho_controller import Ortho_Controller
+from pointy.controllers.sync_controller import Sync_Controller
 
 __all__ = [
-    'Collection_Nav_Panel',
-    'GCP_Panel',
-    'Image_View_Control_Panel',
-    'Metadata_Panel',
-    'Tools_Panel'
+    'GCP_Controller',
+    'Image_Controller',
+    'Ortho_Controller',
+    'Sync_Controller',
 ]

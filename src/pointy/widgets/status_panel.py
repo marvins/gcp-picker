@@ -53,3 +53,19 @@ class Status_Panel(QWidget):
     def clear_status(self):
         """Clear the status message."""
         self.status_label.setText("Ready")
+
+    def update_gcp_info(self, gcp):
+        """Update status panel with GCP information.
+
+        Args:
+            gcp: Ground Control Point object
+        """
+        if gcp:
+            status_msg = f"GCP Selected: ID={gcp.id}, "
+            if hasattr(gcp, 'test_point') and gcp.test_point:
+                status_msg += f"Test: ({gcp.test_point.x:.1f}, {gcp.test_point.y:.1f})"
+            if hasattr(gcp, 'reference_point') and gcp.reference_point:
+                status_msg += f", Ref: ({gcp.reference_point.lon:.6f}, {gcp.reference_point.lat:.6f})"
+            self.update_status(status_msg)
+        else:
+            self.clear_status()

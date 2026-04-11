@@ -85,7 +85,7 @@ def mock_elevation_api():
         return max(0, lat * 100)  # Rough approximation
 
     # Patch the elevation function
-    with patch('pointy.core.terrain.elevation', side_effect=mock_elevation):
+    with patch('tmns.geo.terrain.elevation', side_effect=mock_elevation):
         yield
 
 

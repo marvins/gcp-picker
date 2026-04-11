@@ -23,11 +23,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 #  Third-Party Libraries
+import numpy as np
 
 #  Project Libraries
 from tmns.geo.coord import Geographic, Pixel, UTM
 from tmns.geo.terrain import elevation as get_elevation
-from tmns.geo.projector import GCP
+from tmns.geo.proj import GCP, Identity
 
 class GCP_Processor:
     """Core processor for ground control points."""
@@ -43,18 +44,36 @@ class GCP_Processor:
         self.pending_reference_point = None
 
         # Projector for coordinate transformations
-        self.projector = None
+        self.projector = Identity()
+
+        # Track unsaved changes
+        self._dirty = False
+
+    @property
+    def is_dirty(self) -> bool:
+        """Check if there are unsaved changes."""
+        return self._dirty
+
+    def _mark_dirty(self):
+        """Mark the processor as having unsaved changes."""
+        self._dirty = True
+
+    def _mark_clean(self):
+        """Mark the processor as having no unsaved changes."""
+        self._dirty = False
 
     def add_gcp(self, gcp: GCP):
         """Add a GCP to the collection."""
         self.gcps[gcp.id] = gcp
         if gcp.id >= self.next_gcp_id:
             self.next_gcp_id = gcp.id + 1
+        self._mark_dirty()
 
     def remove_gcp(self, gcp_id: int):
         """Remove a GCP by ID."""
         if gcp_id in self.gcps:
             del self.gcps[gcp_id]
+            self._mark_dirty()
 
     def get_gcp(self, gcp_id: int) -> GCP | None:
         """Get a GCP by ID."""
@@ -119,7 +138,7 @@ class GCP_Processor:
 
     def transform_test_coordinates(self, x: float, y: float) -> tuple[float, float]:
         """Transform test coordinates using current projector."""
-        if self.projector is None:
+        if self.projector.is_identity:
             return x, y
 
         try:
@@ -186,6 +205,8 @@ class GCP_Processor:
             # Default to JSON
             self._save_json(file_path.with_suffix('.json'))
 
+        self._mark_clean()
+
     def _save_json(self, file_path: Path):
         """Save GCPs as JSON."""
         data = {
@@ -221,8 +242,8 @@ class GCP_Processor:
                     gcp.geographic.longitude_deg, gcp.geographic.latitude_deg
                 ])
 
-    def load_gcps(self, file_path: str):
-        """Load GCPs from file."""
+    def load_gcps(self, file_path: str) -> int:
+        """Load GCPs from file and return the count of loaded GCPs."""
         file_path = Path(file_path)
 
         if not file_path.exists():
@@ -241,12 +262,23 @@ class GCP_Processor:
             except:
                 self._load_text(file_path)
 
+        self._mark_clean()
+        return len(self.gcps)
+
     def _load_json(self, file_path: Path):
         """Load GCPs from JSON."""
         with open(file_path, 'r') as f:
             data = json.load(f)
 
-        self.test_image_path = data.get('test_image_path')
+        # Resolve test_image_path relative to GCP file location
+        test_image_path = data.get('test_image_path')
+        if test_image_path and not Path(test_image_path).is_absolute():
+            # Resolve relative to the directory containing the GCP file
+            gcp_file_dir = file_path.parent
+            self.test_image_path = str(gcp_file_dir / test_image_path)
+        else:
+            self.test_image_path = test_image_path
+
         self.reference_info = data.get('reference_info')
 
         self.gcps.clear()
@@ -359,3 +391,80 @@ class GCP_Processor:
             )
             for gcp in self.gcps.values()
         ]
+
+    def calculate_residuals(self, projector=None) -> dict:
+        """Calculate residuals for all GCPs using the given projector.
+
+        Args:
+            projector: Optional projector to use. If None, uses self.projector.
+
+        Returns:
+            Dictionary with residual information:
+            {
+                'gcps': [
+                    {
+                        'id': gcp_id,
+                        'geo_error_deg': forward error in degrees,
+                        'pixel_error_px': inverse error in pixels,
+                        'geo_pred_lat': predicted latitude,
+                        'geo_pred_lon': predicted longitude,
+                        'pixel_pred_x': predicted x pixel,
+                        'pixel_pred_y': predicted y pixel
+                    },
+                    ...
+                ],
+                'rmse_px': overall pixel RMSE,
+                'rmse_deg': overall degree RMSE
+            }
+        """
+        if projector is None:
+            projector = self.projector
+
+        if projector.is_identity:
+            return {
+                'gcps': [],
+                'rmse_px': 0.0,
+                'rmse_deg': 0.0,
+                'error': 'Projector is identity, no model fitted'
+            }
+
+        residuals = []
+        total_pixel_error_sq = 0.0
+        total_geo_error_sq = 0.0
+
+        for gcp in self.gcps.values():
+            # Forward: source pixel -> geo
+            geo_pred = projector.source_to_geographic(gcp.test_pixel)
+            geo_error_deg = np.sqrt(
+                (geo_pred.latitude_deg - gcp.geographic.latitude_deg) ** 2 +
+                (geo_pred.longitude_deg - gcp.geographic.longitude_deg) ** 2
+            )
+
+            # Inverse: geo -> source pixel
+            pixel_pred = projector.geographic_to_source(gcp.geographic)
+            pixel_error_px = np.sqrt(
+                (pixel_pred.x_px - gcp.test_pixel.x_px) ** 2 +
+                (pixel_pred.y_px - gcp.test_pixel.y_px) ** 2
+            )
+
+            residuals.append({
+                'id': gcp.id,
+                'geo_error_deg': geo_error_deg,
+                'pixel_error_px': pixel_error_px,
+                'geo_pred_lat': geo_pred.latitude_deg,
+                'geo_pred_lon': geo_pred.longitude_deg,
+                'pixel_pred_x': pixel_pred.x_px,
+                'pixel_pred_y': pixel_pred.y_px
+            })
+
+            total_pixel_error_sq += pixel_error_px ** 2
+            total_geo_error_sq += geo_error_deg ** 2
+
+        rmse_px = np.sqrt(total_pixel_error_sq / len(self.gcps)) if self.gcps else 0.0
+        rmse_deg = np.sqrt(total_geo_error_sq / len(self.gcps)) if self.gcps else 0.0
+
+        return {
+            'gcps': residuals,
+            'rmse_px': rmse_px,
+            'rmse_deg': rmse_deg
+        }

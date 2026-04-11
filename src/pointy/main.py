@@ -22,6 +22,7 @@ import sys
 import logging
 import argparse
 import traceback
+import signal
 from pathlib import Path
 
 #  Third-Party Libraries
@@ -160,7 +161,7 @@ def main():
         if app_settings and app_settings.auto_fetch_elevation:
             terrain_manager = get_default_manager()
             if terrain_manager and terrain_manager.sources:
-                total_sources = sum(len(catalog.sources) for catalog in terrain_manager.sources)
+                total_sources = sum(len(catalog.source_cache) for catalog in terrain_manager.sources)
                 logger.info(f"Terrain manager initialized with {total_sources} sources (auto-fetch enabled)")
             else:
                 logger.warning("Terrain manager initialized but no terrain sources available")
@@ -176,14 +177,8 @@ def main():
     logger.info("Creating main window")
     splash_manager.next_step()  # "Creating main window..."
 
-    # Create main window
+    # Create main window (setup happens in __init__)
     main_window = Main_Window(terrain_manager=terrain_manager)
-
-    splash_manager.next_step()  # "Setting up UI components..."
-    main_window.setup_ui()
-
-    splash_manager.next_step()  # "Connecting signals..."
-    main_window.connect_signals()
 
     splash_manager.next_step()  # "Loading reference data..."
     main_window.show()
@@ -196,6 +191,13 @@ def main():
     splash_manager.close_splash()
 
     logger.info("Starting Qt event loop")
+
+    # Handle Ctrl-C gracefully
+    def handle_sigint(signum, frame):
+        logger.info("Received interrupt signal, shutting down...")
+        app.quit()
+
+    signal.signal(signal.SIGINT, handle_sigint)
 
     # Start application
     return_code = app.exec()
