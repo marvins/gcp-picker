@@ -85,7 +85,8 @@ def setup_logging(verbose: bool = False):
     console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler("pointy.log")
+    log_path = Path(__file__).parent.parent.parent / "pointy.log"
+    file_handler = logging.FileHandler(str(log_path))
     file_handler.setLevel(logging.DEBUG)  # Always debug to file
     file_handler.setFormatter(formatter)
 

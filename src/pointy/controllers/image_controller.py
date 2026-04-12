@@ -131,14 +131,6 @@ class Image_Controller:
         self._status.showMessage(f'Loaded collection: {self._coll_mgr.current_collection.name}')
         self._load_first_collection_image()
 
-        gcp_file = self._coll_mgr.current_collection.gcp_file
-        if Path(gcp_file).exists():
-            try:
-                count = self._gcp_ctrl.load_gcps_from_path(gcp_file)
-                self._status.showMessage(f'Loaded collection with {count} GCPs')
-            except Exception as e:
-                logging.warning(f'Could not auto-load GCPs from {gcp_file}: {e}')
-
     # ------------------------------------------------------------------
     # Collection navigation
     # ------------------------------------------------------------------
@@ -245,10 +237,8 @@ class Image_Controller:
             QMessageBox.information(self._parent, 'Info', 'No images found in collection')
             return
 
-        self._imagery.needs_seed_location(first_image)
         try:
-            self._test.load_image(first_image)
-            self._status.showMessage(f'Loaded: {Path(first_image).name}')
+            self._load_collection_image(first_image)
 
             seed = self._coll_mgr.get_collection_seed_location()
             if seed:
@@ -257,8 +247,6 @@ class Image_Controller:
                 self._status.showMessage(
                     f'Centered on collection: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}'
                 )
-
-            self._update_nav_counter()
 
         except Exception as e:
             QMessageBox.critical(self._parent, 'Error', f'Failed to load image:\n{e}')
@@ -269,6 +257,9 @@ class Image_Controller:
         """Load a collection image with async loading and seed handling."""
         needs_seed = self._imagery.needs_seed_location(image_path)
         seed       = self._coll_mgr.get_collection_seed_location()
+
+        # Clear existing GCPs from previous image and load image-specific GCPs
+        self._gcp_ctrl.load_gcps_for_image(image_path)
 
         self._test.load_image(image_path)
 
@@ -282,9 +273,11 @@ class Image_Controller:
     def _update_nav_counter(self):
         """Update the sidebar navigation counter."""
         if self._coll_mgr.has_collection():
-            current = self._coll_mgr.current_image_index + 1
-            total   = len(self._coll_mgr.loaded_images)
-            self._sidebar.get_collection_nav_panel().update_counter(current, total)
+            current    = self._coll_mgr.current_image_index + 1
+            total      = len(self._coll_mgr.loaded_images)
+            image_path = self._coll_mgr.get_current_image()
+            image_name = Path(image_path).name if image_path else ""
+            self._sidebar.get_collection_nav_panel().update_counter(current, total, image_name)
         else:
             self._sidebar.get_collection_nav_panel().update_counter(0, 0)
 

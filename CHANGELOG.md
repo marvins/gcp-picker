@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-04-12
+
+### Added
+* `GCP.source` field (`str`, default `'manual'`) and `GCP.metadata` field (`dict`) on the `GCP` dataclass
+* `Collection_Nav_Panel` now displays the basename of the current image below the image counter.
+* Auto-GCP solver design document updated with UI design, `Match_Algo` enum, manual GCP prior integration strategy, and revised phased implementation plan.
+
+### Changed
+* GCP persistence moved to per-image sidecar files (`image.png.gcps.json`); collection-level GCP file and `gcp_file` config removed.
+* `Ortho_Controller` re-warps automatically when a new model is fitted while already in ortho mode.
+* Log file path is now absolute (project root `pointy.log`).
+
+### Fixed
+* Model fitting errors now logged with `logging.error` matching the status bar message.
+
+### Removed
+* Removed two broken integration tests (`test_oblique_camera_scenario`, `test_affine_model_fitting`) — invalid test data; covered by `terminus_core_python` tests.
+
 ## [1.0.1] - 2026-04-11
 
 ### Added

@@ -44,7 +44,6 @@ class Collection_Info:
     description: str
     location: Collection_Location
     image_paths: List[str] = field(default_factory=list)
-    gcp_file: str = ""
     base_directory: str = ""
 
 
@@ -93,10 +92,6 @@ class Collection_Manager(QObject):
             image_paths_data = data.get('image_paths', {})
             image_paths = image_paths_data.get('images', [])
 
-            # Get GCP file path
-            gcp_data = data.get('gcp_data', {})
-            gcp_file = gcp_data.get('gcp_file', './gcps/collection_gcps.json')
-
             # Resolve base directory relative to collection file
             base_directory = str(collection_path.parent.resolve())
 
@@ -106,16 +101,12 @@ class Collection_Manager(QObject):
                 full_path = Path(base_directory) / img_path
                 resolved_images.append(str(full_path))
 
-            # Resolve GCP file path
-            resolved_gcp_file = str(Path(base_directory) / gcp_file)
-
             # Create collection info
             self.current_collection = Collection_Info(
                 name=data.get('collection_name', 'Unnamed Collection'),
                 description=data.get('description', ''),
                 location=location,
                 image_paths=resolved_images,
-                gcp_file=resolved_gcp_file,
                 base_directory=base_directory
             )
 

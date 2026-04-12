@@ -83,6 +83,22 @@ class GCP_Processor:
         """Get all GCPs as a list."""
         return list(self.gcps.values())
 
+    def get_gcps_for_image(self, image_path: str) -> List[GCP]:
+        """Get GCPs whose test_image_path matches image_path by basename.
+
+        Args:
+            image_path: Path to the image to filter GCPs for.
+
+        Returns:
+            List of GCPs belonging to that image, or all GCPs if no
+            test_image_path is set on the processor.
+        """
+        if not self.test_image_path:
+            return list(self.gcps.values())
+        if Path(self.test_image_path).name == Path(image_path).name:
+            return list(self.gcps.values())
+        return []
+
     def gcp_count(self) -> int:
         """Get the number of GCPs."""
         return len(self.gcps)
@@ -266,16 +282,16 @@ class GCP_Processor:
         return len(self.gcps)
 
     def _load_json(self, file_path: Path):
-        """Load GCPs from JSON."""
-        with open(file_path, 'r') as f:
-            data = json.load(f)
+        """Load GCPs from JSON (single-image object or first entry of array)."""
+        data = json.loads(file_path.read_text())
+
+        if isinstance(data, list):
+            data = data[0] if data else {}
 
         # Resolve test_image_path relative to GCP file location
         test_image_path = data.get('test_image_path')
         if test_image_path and not Path(test_image_path).is_absolute():
-            # Resolve relative to the directory containing the GCP file
-            gcp_file_dir = file_path.parent
-            self.test_image_path = str(gcp_file_dir / test_image_path)
+            self.test_image_path = str(file_path.parent / test_image_path)
         else:
             self.test_image_path = test_image_path
 

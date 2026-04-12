@@ -123,7 +123,11 @@ class Ortho_Controller:
                     tools_panel.set_sidecar_status(False)
                     self._status.showMessage(f'{model_name} fit complete — RMSE: {residuals_info["rmse"]:.3f} px (sidecar save failed)')
 
+            if self._test.ortho_btn.isChecked():
+                self.perform_orthorectification()
+
         except Exception as e:
+            logging.error(f'Fit failed: {e}')
             tools_panel.clear_fit_results()
             status_panel.update_transform_status('Fit failed')
             tools_panel.set_sidecar_status(False)

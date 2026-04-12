@@ -52,6 +52,13 @@ class Collection_Nav_Panel(QWidget):
         self.counter_label.setStyleSheet("font-size: 10px; color: #666; font-weight: bold;")
         layout.addWidget(self.counter_label)
 
+        # Image basename label
+        self.image_label = QLabel("")
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet("font-size: 8px; color: #888;")
+        self.image_label.setWordWrap(True)
+        layout.addWidget(self.image_label)
+
         # Navigation buttons row
         button_layout = QHBoxLayout()
         button_layout.setSpacing(5)
@@ -135,18 +142,21 @@ class Collection_Nav_Panel(QWidget):
         self.next_btn.setEnabled(enabled)
         self.last_btn.setEnabled(enabled)
 
-    def update_counter(self, current: int, total: int):
+    def update_counter(self, current: int, total: int, image_name: str = ""):
         """Update the image counter display.
 
         Args:
-            current: Current image index (1-based)
-            total: Total number of images
+            current:    Current image index (1-based)
+            total:      Total number of images
+            image_name: Basename of the current image
         """
         if total == 0:
             self.counter_label.setText("No images")
+            self.image_label.setText("")
             self.set_enabled(False)
         else:
             self.counter_label.setText(f"Image {current} / {total}")
+            self.image_label.setText(image_name)
             self.set_enabled(True)
 
     def set_collection_name(self, name: str):

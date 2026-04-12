@@ -93,6 +93,7 @@ class Leaflet_Reference_Viewer(QWidget):
         self.pending_gcps = []  # Queue of (gcp_id, lon, lat) to add when map is ready
         self._image_boundary_corners: list[tuple[float, float]] | None = None  # [(lat, lon), ...]
         self._last_center: tuple[float, float, float] | None = None
+        self._map_was_ready = False  # Track if map was ever ready (to distinguish initial load from recreation)
 
         # Setup logger
         self.logger = logging.getLogger(__name__)
@@ -268,6 +269,9 @@ class Leaflet_Reference_Viewer(QWidget):
 
     def create_initial_map(self):
         """Create the initial Leaflet map."""
+        # Ensure was-ready flag is reset for initial load
+        self._map_was_ready = False
+
         # Get map settings from config
         map_settings = self.config_manager.get_map_settings()
         default_center = map_settings.default_center
@@ -621,8 +625,15 @@ class Leaflet_Reference_Viewer(QWidget):
 
     def on_map_ready(self):
         """Handle map ready signal from JavaScript."""
+        was_ready_before = self._map_was_ready
         self.map_is_ready = True
+        self._map_was_ready = True
         self.status_label.setText("Map ready - Click to select points")
+
+        self.logger.info(f"on_map_ready called: was_ready_before={was_ready_before}, "
+                        f"pending_gcps={len(self.pending_gcps)}, "
+                        f"gcp_points={len(self.gcp_points)}, "
+                        f"map_is_ready={self.map_is_ready}")
 
         # Draw any pending GCPs that were added before map was ready
         if self.pending_gcps:
@@ -634,6 +645,17 @@ class Leaflet_Reference_Viewer(QWidget):
             self.web_view.page().runJavaScript(js)
             self.pending_gcps.clear()
             self.logger.debug(f"Finished drawing pending GCPs in {time.perf_counter() - t0:.3f}s")
+
+        # Redraw all existing GCPs only if map was recreated (was ready before, now ready again)
+        if was_ready_before and self.gcp_points:
+            self.logger.info(f"Map was recreated - redrawing {len(self.gcp_points)} existing GCPs")
+            t0 = time.perf_counter()
+            gcp_array = str([[gcp_id, lon, lat] for gcp_id, (lon, lat) in self.gcp_points.items()])
+            js = f"addGCPPointsBatch({gcp_array});"
+            self.web_view.page().runJavaScript(js)
+            self.logger.debug(f"Finished redrawing existing GCPs in {time.perf_counter() - t0:.3f}s")
+        else:
+            self.logger.info(f"Initial map load (was_ready_before={was_ready_before}) - skipping GCP redraw")
 
         # Restore image boundary polygon if one was set
         if self._image_boundary_corners is not None:
@@ -653,7 +675,8 @@ class Leaflet_Reference_Viewer(QWidget):
         else:
             # Map isn't ready yet, queue the GCP for later
             self.pending_gcps.append((gcp_id, lon, lat))
-            self.logger.debug(f"Queued GCP {gcp_id} for later drawing (map not ready)")
+            self.logger.info(f"Queued GCP {gcp_id} for later drawing (map not ready, "
+                           f"was_ready={self._map_was_ready}, pending_count={len(self.pending_gcps)})")
 
     def remove_gcp_point(self, gcp_id: int):
         """Remove a GCP point from the map."""
@@ -715,10 +738,13 @@ class Leaflet_Reference_Viewer(QWidget):
 
     def clear_points(self):
         """Clear all GCP points."""
+        self.logger.info(f"clear_points called: map_is_ready={self.map_is_ready}, gcp_points={len(self.gcp_points)}")
         self.gcp_points.clear()
+        self.pending_gcps.clear()
         if self.map_is_ready:
             js = "clearGCPPoints();"
             self.web_view.page().runJavaScript(js)
+            self.logger.info("clearGCPPoints() JS called")
 
     def is_initialized(self) -> bool:
         """Check if the reference viewer has a loaded reference source."""
@@ -736,7 +762,13 @@ class Leaflet_Reference_Viewer(QWidget):
             self.logger.warning("Web view not available, cannot recreate map")
             return
 
-        self.logger.debug(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}")
+        self.logger.info(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}, "
+                        f"was_ready={self._map_was_ready}, "
+                        f"pending_gcps={len(self.pending_gcps)}, "
+                        f"gcp_points={len(self.gcp_points)}")
+
+        # Set map_is_ready to False since we're recreating
+        self.map_is_ready = False
 
         # Create a new folium map centered on the specified location
         m = folium.Map(

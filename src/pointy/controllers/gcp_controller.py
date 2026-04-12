@@ -48,14 +48,15 @@ class GCP_Controller:
     def __init__(self, gcp_processor, gcp_manager, gcp_panel,
                  test_viewer, reference_viewer, collection_manager,
                  status_bar, parent_widget):
-        self._gcp_proc  = gcp_processor
-        self._mgr       = gcp_manager
-        self._panel     = gcp_panel
-        self._test      = test_viewer
-        self._ref       = reference_viewer
-        self._coll_mgr  = collection_manager
-        self._status    = status_bar
-        self._parent    = parent_widget
+        self._gcp_proc       = gcp_processor
+        self._mgr            = gcp_manager
+        self._panel          = gcp_panel
+        self._test           = test_viewer
+        self._ref            = reference_viewer
+        self._coll_mgr       = collection_manager
+        self._status         = status_bar
+        self._parent         = parent_widget
+
 
     def connect(self):
         """Wire all signals managed by this controller."""
@@ -169,8 +170,11 @@ class GCP_Controller:
             return
 
         if self._coll_mgr.has_collection():
-            file_path = self._coll_mgr.current_collection.gcp_file
-            Path(file_path).parent.mkdir(parents=True, exist_ok=True)
+            image_path = self._gcp_proc.test_image_path or ''
+            if not image_path:
+                self._status.showMessage('No image loaded — cannot save GCPs')
+                return
+            file_path = image_path + '.gcps.json'
         else:
             file_path, _ = QFileDialog.getSaveFileName(
                 self._parent, 'Save GCPs', '',
@@ -191,9 +195,10 @@ class GCP_Controller:
     def load_gcps(self):
         """Load GCPs from file."""
         if self._coll_mgr.has_collection():
-            file_path = self._coll_mgr.current_collection.gcp_file
-            if not Path(file_path).exists():
-                self._status.showMessage(f'GCP file not found: {Path(file_path).name}')
+            image_path = self._gcp_proc.test_image_path or ''
+            file_path  = image_path + '.gcps.json' if image_path else ''
+            if not file_path or not Path(file_path).exists():
+                self._status.showMessage('No GCP sidecar found for current image')
                 return
         else:
             file_path, _ = QFileDialog.getOpenFileName(
@@ -231,6 +236,15 @@ class GCP_Controller:
                 QMessageBox.critical(self._parent, 'Error', f'Failed to export GCPs:\n{e}')
                 self._status.showMessage('Failed to export GCPs')
 
+    def _clear_all_gcps_silent(self):
+        """Clear all GCPs without user prompt (for internal/programmatic use)."""
+        logging.info('_clear_all_gcps_silent called')
+        self._gcp_proc.clear_gcps()
+        self._mgr.clear_all_gcps()
+        self._test.clear_points()
+        self._ref.clear_points()
+        logging.info('_clear_all_gcps_silent complete')
+
     def clear_all_gcps(self):
         """Prompt and clear all GCPs."""
         reply = QMessageBox.question(
@@ -240,36 +254,39 @@ class GCP_Controller:
         if reply != QMessageBox.Yes:
             return
 
-        if hasattr(self._gcp_proc, 'clear_gcps'):
-            self._gcp_proc.clear_gcps()
-        if hasattr(self._mgr, 'clear_all_gcps'):
-            self._mgr.clear_all_gcps()
-        if hasattr(self._test, 'clear_points'):
-            self._test.clear_points()
-        if hasattr(self._ref, 'clear_points'):
-            self._ref.clear_points()
-
+        self._clear_all_gcps_silent()
         self._status.showMessage('Cleared all GCPs')
 
-    # ------------------------------------------------------------------
-    # Bulk load helper (used by Image_Controller after collection load)
-    # ------------------------------------------------------------------
+    def load_gcps_for_image(self, image_path: str):
+        """Load GCPs for a specific image (collection-level GCPs).
 
-    def load_gcps_from_path(self, gcp_file: str):
-        """Load GCPs from a specific path and push them to both viewers."""
-        count = self._gcp_proc.load_gcps(gcp_file)
-        gcps = self._gcp_proc.get_gcps()
-        self._mgr.update_gcp_list(gcps)
+        Clears existing GCPs and loads the collection's GCP file if available.
+        If no collection is loaded or no GCP file exists, the viewers are left empty.
 
-        for gcp in gcps:
-            tx, ty = self._gcp_proc.transform_test_coordinates(
-                gcp.test_pixel.x_px, gcp.test_pixel.y_px
-            )
-            self._test.add_gcp_point(int(tx), int(ty), gcp.id)
-            self._ref.add_gcp_point(gcp.id, gcp.geographic.longitude_deg, gcp.geographic.latitude_deg)
+        Args:
+            image_path: Path to the image file.
+        """
+        # Always clear viewers and processor first
+        self._mgr.clear_all_gcps()
+        self._test.clear_points()
+        self._ref.clear_points()
+        self._gcp_proc.clear_gcps()
+        self._gcp_proc.set_test_image_path(image_path)
 
-        logging.info(f'Auto-loaded {count} GCPs from {gcp_file}')
-        return count
+        basename = Path(image_path).name
+
+        # Look for a GCP sidecar alongside the image (saved work)
+        sidecar = Path(image_path + '.gcps.json')
+        if sidecar.exists():
+            try:
+                count = self._gcp_proc.load_gcps(str(sidecar))
+                self._mgr.update_gcp_list(self._gcp_proc.get_gcps())
+                logging.info(f'Loaded {count} GCPs for image: {basename}')
+                return
+            except Exception as e:
+                logging.warning(f'Could not load GCP sidecar {sidecar}: {e}')
+
+        logging.debug(f'No GCP sidecar found for image: {basename}')
 
     def check_unsaved_before_exit(self) -> bool:
         """Check for unsaved GCP changes before exiting.

@@ -13,6 +13,78 @@ does not scale.
 
 ---
 
+## UI Design
+
+### Panel: "Auto Match"
+A dedicated **"Auto Match"** tab is added to the sidebar, separate from the "Ortho" tab.
+The Ortho tab handles model fitting from GCPs; the Auto Match tab handles automatic GCP
+discovery. The two workflows compose naturally: Auto Match produces GCPs → Ortho fits
+a model from them.
+
+The panel is **run-all-at-once**: all three stages (feature extraction, matching, outlier
+rejection) execute in a single "Run Auto-Match" action. Results are displayed immediately.
+The user can then adjust settings and re-run, or switch to the GCP tab to manually refine
+the auto-generated points before fitting.
+
+```
+┌─ Auto Match ─────────────────────────────────────────┐
+│  Algorithm   [ AKAZE ▼ ]  ☑ Use Manual GCPs as Prior │
+│                                                       │
+│  ── Feature Extraction ──────────────────────────     │
+│  Max Features     [ 2000      ]                       │
+│  Pyramid Level    [ 2 ▼ ]  (runs at 1/4 res)          │
+│  CLAHE Pre-proc   [ ☑ ]                               │
+│                                                       │
+│  ── Matching ────────────────────────────────────     │
+│  Ratio Test       [ 0.75 ]                            │
+│  Matcher          [ FLANN ▼ ]                         │
+│                                                       │
+│  ── Outlier Rejection ───────────────────────────     │
+│  Method           [ RANSAC ▼ ]                        │
+│  Inlier Threshold [ 3.0 px ]                          │
+│                                                       │
+│  ── Results ─────────────────────────────────────     │
+│  Candidates       —                                   │
+│  Inliers          —                                   │
+│  Coverage         —                                   │
+│  RMSE             —                                   │
+│                                                       │
+│           [  Run Auto-Match  ]                        │
+└───────────────────────────────────────────────────────┘
+```
+
+### Match_Algo Enum
+Defined in `pointy/core/auto_match.py`:
+
+```python
+class Match_Algo(Enum):
+    AKAZE = 'akaze'  # Default; built into OpenCV, good for aerial/IR
+    ORB   = 'orb'    # Fast, no extra deps; weaker at large scale changes
+    # Phase 4:
+    # SUPERPOINT = 'superpoint'  # DL, requires torch
+    # LIGHTGLUE  = 'lightglue'   # DL, requires torch
+```
+
+Each enum value maps to a `Feature_Extractor` subclass. Adding a new algorithm
+requires only a new enum entry and a corresponding extractor implementation.
+
+### Manual GCPs as Spatial Prior
+When "Use Manual GCPs as Prior" is checked and manual GCPs exist for the current image:
+
+1. **Footprint estimation**: the geographic bounding box of the manual GCPs is used to
+   seed the reference chip request, replacing the cold-start fallback.
+2. **Match search constraint**: pixel↔geo correspondences from manual GCPs define a
+   plausible affine prior; candidate matches that violate it beyond a configurable
+   tolerance (default ±500 px) are discarded before RANSAC.
+3. **GCP merging**: after auto-matching succeeds, manual GCPs are merged with the
+   auto-GCP candidates. Manual GCPs take priority (they are never overwritten);
+   auto-GCPs fill spatial gaps. The merged set is passed to the Ortho tab for fitting.
+
+Manual GCPs carry `source='manual'` and auto-GCPs carry `source=<Match_Algo.value>`,
+using the `source` field already present on the `GCP` dataclass.
+
+---
+
 ## Pipeline Stages
 
 ```
@@ -47,9 +119,8 @@ Reference   ──┘
 
 | Method | Strengths | Weaknesses | Use Case |
 |---|---|---|---|
-| **SIFT** | Scale & rotation invariant, robust | Slow, patent-expired but needs `opencv-contrib` | General default |
-| **ORB** | Fast, free, binary descriptor | Less accurate at large scale changes | Mobile / real-time |
-| **AKAZE** | Non-linear scale space, good for aerial | Slower than ORB | Aerial/satellite pairs |
+| **AKAZE** | Non-linear scale space, good for aerial/IR, built-in OpenCV | Slower than ORB | **Default** — aerial/satellite pairs |
+| **ORB** | Fast, free, binary descriptor, no extra deps | Less accurate at large scale changes | Fast fallback / real-time |
 | **SuperPoint** (DL) | Excellent cross-domain matching | Requires model weights, GPU beneficial | IR ↔ visible, off-nadir |
 | **LightGlue / SuperGlue** (DL) | State-of-art matching quality | Heavy inference cost | High-accuracy, batch |
 
@@ -242,28 +313,54 @@ This is the hardest problem for this dataset. Strategies in priority order:
 
 ## Implementation Plan
 
-### Phase 1 — Infrastructure
+### Phase 0 — UI Shell (implement first)
+Deliver the full "Auto Match" panel UI and controller skeleton so the tab is visible and
+settings are configurable before any matching logic exists. The "Run Auto-Match" button
+shows a "not yet implemented" status message at this stage.
+
+- [ ] `Match_Algo` enum in `pointy/core/auto_match.py`
+- [ ] `Auto_Match_Panel` widget (`pointy/sidebar/components/auto_match_panel.py`)
+  - Algorithm selector (`Match_Algo` enum-driven combo box)
+  - "Use Manual GCPs as Prior" checkbox
+  - Feature Extraction group: Max Features, Pyramid Level, CLAHE toggle
+  - Matching group: Ratio Test, Matcher (Brute-force / FLANN)
+  - Outlier Rejection group: Method (RANSAC / MAGSAC), Inlier Threshold
+  - Results group: Candidates, Inliers, Coverage, RMSE (read-only)
+  - "Run Auto-Match" button emitting `run_requested` signal
+- [ ] `Auto_Match_Controller` skeleton (`pointy/controllers/auto_match_controller.py`)
+  - Wires `run_requested` signal; reads settings from panel; stub returns early
+- [ ] `Tabbed_Sidebar` gains "Auto Match" tab; `get_auto_match_panel()` accessor
+- [ ] `Main_Window` instantiates and connects `Auto_Match_Controller`
+
+### Phase 1 — Classical Matching Infrastructure
 - [ ] `Reference_Chip_Builder`: fetches and assembles reference tiles for a given bbox + GSD
-- [ ] `Feature_Extractor` ABC: wraps OpenCV SIFT/ORB/AKAZE; returns `(keypoints, descriptors)`
-- [ ] `Feature_Matcher`: ratio test + cross-check; returns raw match list
+- [ ] `Feature_Extractor` ABC: wraps OpenCV AKAZE/ORB; returns `(keypoints, descriptors)`
+  - Concrete subclasses: `AKAZE_Extractor`, `ORB_Extractor`
+  - Factory function driven by `Match_Algo` enum
+- [ ] `Feature_Matcher`: ratio test + optional cross-check; returns raw match list
 - [ ] `RANSAC_Filter`: wraps `cv2.findHomography` RANSAC; returns inlier matches
 - [ ] `GCP_Candidate_Set`: spatially sampled, quality-ranked candidate list
+- [ ] Manual GCP prior integration in `Auto_Match_Controller.run()`
+  - Footprint from manual GCP bounding box
+  - Pre-RANSAC spatial filtering using affine prior from manual pairs
 
-### Phase 2 — Model Search
-- [ ] Direct least-squares baseline (reuse `projector.solve_from_gcps`)
-- [ ] GA solver (`DEAP` or custom) with coverage-aware fitness
+### Phase 2 — Model Search & Merge
+- [ ] Direct least-squares baseline (reuse `fit_transformation_model`)
+- [ ] GA solver (`DEAP` or custom NumPy) with coverage-aware fitness
 - [ ] Simulated Annealing fallback (no extra dependencies)
+- [ ] GCP merge: auto-GCPs injected into `GCP_Processor` with `source=Match_Algo.value`;
+  manual GCPs preserved; merged set forwarded to Ortho tab for fitting
 
-### Phase 3 — Validation & UI
-- [ ] `Model_Validator`: roundtrip, coverage, boundary, cross-validation
-- [ ] Confidence indicator in `Transformation_Status_Panel`
-- [ ] Auto-GCP display in GCP manager table (tagged `AUTO`, editable)
-- [ ] "Auto-Solve" button in Ortho sidebar tab
+### Phase 3 — Validation
+- [ ] `Model_Validator`: roundtrip, coverage, boundary, cross-validation checks
+- [ ] Confidence indicator (`✅ High / ⚠️ Medium / ❌ Low`) surfaced in results group
+- [ ] Auto-GCP display in GCP manager table (tagged by `source`, editable/deletable)
 
 ### Phase 4 — Deep Learning Matching
 - [ ] SuperPoint + LightGlue integration (optional `torch` extra)
+- [ ] `SUPERPOINT` and `LIGHTGLUE` entries added to `Match_Algo`; hidden if `torch` absent
 - [ ] Fine-tuning pipeline on IR/visible pairs from the collection
-- [ ] Fallback to classical if `torch` not available
+- [ ] Fallback to AKAZE if `torch` not available
 
 ---
 
@@ -273,17 +370,33 @@ This is the hardest problem for this dataset. Strategies in priority order:
    Need to compute dynamically from `geo_scale_at_center()` or image metadata.
 
 2. **Cold start (no prior model)**: How to estimate the reference footprint before any
-   model is fitted? Options: GPS metadata embedded in image, user-specified bbox, or
-   brute-force tile search at coarse resolution.
+   model is fitted?
+   - **Resolved (partially)**: if manual GCPs exist, their geographic bounding box is used.
+   - **Remaining**: when no manual GCPs exist — options are GPS metadata embedded in image,
+     user-specified bbox in the Auto Match panel, or brute-force tile search at coarse
+     resolution. A "Set Footprint" control in the panel may be needed.
 
 3. **GA vs SA**: For typical GCP candidate sets (20–60 points), both are tractable.
-   GA is more parallelisable; SA is simpler to implement. Evaluate empirically.
+   GA is more parallelisable; SA is simpler to implement. Evaluate empirically in Phase 2.
 
 4. **Cross-modal training data**: Do we have enough IR/visible pairs from this collection
    to fine-tune SuperPoint/LightGlue? If not, rely on CLAHE + gradient matching initially.
+   Deferred to Phase 4.
 
-5. **Confidence threshold for auto-accept**: Should the solver auto-accept high-confidence
-   results silently, or always require user confirmation? Configurable per collection.
+5. **Confidence threshold for auto-accept**: Resolved — the solver never silently auto-accepts.
+   Results always appear in the Auto Match panel; the user explicitly switches to the Ortho
+   tab and hits "Fit" to commit. High-confidence results are highlighted but not force-applied.
 
-6. **Integration with model persistence**: Auto-solved models should save to the sidecar
-   TOML (see `ortho-logic.md`) with a flag indicating they are auto-generated.
+6. **Integration with model persistence**: Auto-solved models follow the same sidecar path
+   as manually fitted models (`image.png.ortho.json`). The `source` field on each auto-GCP
+   (`source=Match_Algo.value`) records the algorithm used. No separate flag is needed in
+   the sidecar; GCP provenance is carried in the GCP sidecar (`image.png.gcps.json`).
+
+7. **Settings persistence**: Should Auto Match panel settings (algo, ratio test, threshold,
+   etc.) persist between sessions? Likely yes — store in `collection_config.toml` under a
+   new `[auto_match]` section, or as a per-image sidecar setting. TBD.
+
+8. **Partial re-run**: Should the user be able to run only the outlier rejection step with
+   new threshold settings without re-running feature extraction (which is the slowest step)?
+   The run-all-at-once design keeps the UI simple; caching extracted features between runs
+   would enable partial re-runs without complicating the UI.
