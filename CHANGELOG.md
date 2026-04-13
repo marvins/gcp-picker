@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-04-12
+
+### Added
+* Auto Match panel UI shell with algorithm selection (AKAZE/ORB), extraction/matching/rejection settings, and results display
+* Auto_Match_Controller skeleton with signal wiring
+* `pointy/core/auto_match.py` with `Match_Algo`, `Matcher_Type`, `Rejection_Method` enums and `Auto_Match_Settings` dataclass
+* `pointy/core/match/` package with backend pipeline classes: `Feature_Extractor` (AKAZE/ORB), `Feature_Matcher`, `Outlier_Filter` (RANSAC/MAGSAC), `GCP_Candidate_Set`, `Auto_Matcher`, `Match_Result`
+* Tabbed Sidebar "Match" tab and Main Window controller wiring
+
+### Changed
+* Sidebar max width 400px → 450px; tab labels abbreviated and styling reduced for compact display
+* Auto-GCP solver design document updated with UI wireframe, parameter tables, and Phase 0 completion
+
+### Note
+* Auto Match is **not yet operational** — UI and backend skeleton exist, but pipeline is not wired to controller and reference chip fetching is not implemented.
+
 ## [1.0.2] - 2026-04-12
 
 ### Added

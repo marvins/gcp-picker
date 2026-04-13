@@ -20,6 +20,7 @@ Tabbed Sidebar - Sidebar with tabs for better organization
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 #  Project Libraries
+from pointy.sidebar.components.auto_match_panel import Auto_Match_Panel
 from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
 from pointy.sidebar.components.gcp_panel import GCP_Panel
 from pointy.sidebar.components.metadata_panel import Metadata_Panel
@@ -50,6 +51,7 @@ class Tabbed_Sidebar(QWidget):
         self._setup_image_controls_tab()
         self._setup_gcp_tab()
         self._setup_ortho_tab()
+        self._setup_auto_match_tab()
 
         # Set Info tab as default
         self.tab_widget.setCurrentIndex(0)
@@ -118,6 +120,19 @@ class Tabbed_Sidebar(QWidget):
         nav_layout.addStretch()
         self.tab_widget.addTab(nav_widget, "Ortho")
 
+    def _setup_auto_match_tab(self):
+        """Setup the Auto Match tab."""
+        auto_match_widget = QWidget()
+        auto_match_layout = QVBoxLayout(auto_match_widget)
+        auto_match_layout.setContentsMargins(5, 5, 5, 5)
+        auto_match_layout.setSpacing(10)
+
+        self.auto_match_panel = Auto_Match_Panel()
+        auto_match_layout.addWidget(self.auto_match_panel)
+        auto_match_layout.addStretch()
+
+        self.tab_widget.addTab(auto_match_widget, "Match")
+
     def _set_styling(self):
         """Set the sidebar styling."""
         self.setStyleSheet("""
@@ -134,10 +149,11 @@ class Tabbed_Sidebar(QWidget):
                 background-color: #e0e0e0;
                 border: 1px solid #ccc;
                 border-bottom: none;
-                padding: 6px 12px;
+                padding: 4px 8px;
                 margin-right: 2px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
+                font-size: 10px;
             }
             QTabBar::tab:selected {
                 background-color: white;
@@ -171,3 +187,7 @@ class Tabbed_Sidebar(QWidget):
     def get_transformation_status_panel(self) -> Transformation_Status_Panel:
         """Get the transformation status panel component."""
         return self.transformation_status_panel
+
+    def get_auto_match_panel(self) -> Auto_Match_Panel:
+        """Get the Auto Match panel component."""
+        return self.auto_match_panel

@@ -27,13 +27,28 @@ The user can then adjust settings and re-run, or switch to the GCP tab to manual
 the auto-generated points before fitting.
 
 ```
-┌─ Auto Match ─────────────────────────────────────────┐
-│  Algorithm   [ AKAZE ▼ ]  ☑ Use Manual GCPs as Prior │
+┌─ Auto Match ──────────────────────────────────────────┐
+│  ── Algorithm ────────────────────────────────────     │
+│  Method           [ AKAZE ▼ ]                         │
+│  ☑ Use Manual GCPs as Prior                           │
 │                                                       │
 │  ── Feature Extraction ──────────────────────────     │
 │  Max Features     [ 2000      ]                       │
 │  Pyramid Level    [ 2 ▼ ]  (runs at 1/4 res)          │
 │  CLAHE Pre-proc   [ ☑ ]                               │
+│                                                       │
+│  ── AKAZE Parameters ───────────────────────────      │
+│  Threshold        [ 0.0010 ]  (lower = more kps)      │
+│  Octaves          [ 4 ]                               │
+│  Octave Layers    [ 4 ]                               │
+│                   (hidden when ORB selected)          │
+│                                                       │
+│  ── ORB Parameters  ────────────────────────────      │
+│  Scale Factor     [ 1.20 ]                            │
+│  Levels           [ 8 ]                               │
+│  Edge Threshold   [ 31 ]                              │
+│  Patch Size       [ 31 ]                              │
+│                   (hidden when AKAZE selected)        │
 │                                                       │
 │  ── Matching ────────────────────────────────────     │
 │  Ratio Test       [ 0.75 ]                            │
@@ -67,6 +82,28 @@ class Match_Algo(Enum):
 
 Each enum value maps to a `Feature_Extractor` subclass. Adding a new algorithm
 requires only a new enum entry and a corresponding extractor implementation.
+
+### Algo-Specific Tunable Parameters
+
+**AKAZE** (`AKAZE_Params` dataclass):
+
+| Parameter | Default | Range | Effect |
+|---|---|---|---|
+| `threshold` | 0.001 | 0.0001–0.05 | Detector response threshold — lower → more keypoints |
+| `n_octaves` | 4 | 1–8 | Maximum octave evolution of the image |
+| `n_octave_layers` | 4 | 1–8 | Sub-levels per scale octave |
+
+**ORB** (`ORB_Params` dataclass):
+
+| Parameter | Default | Range | Effect |
+|---|---|---|---|
+| `scale_factor` | 1.2 | 1.05–2.0 | Pyramid decimation ratio — smaller = finer scale steps |
+| `n_levels` | 8 | 1–16 | Number of pyramid levels |
+| `edge_threshold` | 31 | 1–64 | Border size (px) where features are not detected |
+| `patch_size` | 31 | 1–64 | Patch size for oriented BRIEF descriptor |
+
+The panel shows only the parameter group relevant to the selected algorithm;
+the other group is hidden.
 
 ### Manual GCPs as Spatial Prior
 When "Use Manual GCPs as Prior" is checked and manual GCPs exist for the current image:
@@ -313,36 +350,54 @@ This is the hardest problem for this dataset. Strategies in priority order:
 
 ## Implementation Plan
 
-### Phase 0 — UI Shell (implement first)
-Deliver the full "Auto Match" panel UI and controller skeleton so the tab is visible and
-settings are configurable before any matching logic exists. The "Run Auto-Match" button
-shows a "not yet implemented" status message at this stage.
+### Phase 0 — UI Shell ✅ Complete
+The full "Auto Match" panel UI and controller skeleton are implemented.
 
-- [ ] `Match_Algo` enum in `pointy/core/auto_match.py`
-- [ ] `Auto_Match_Panel` widget (`pointy/sidebar/components/auto_match_panel.py`)
-  - Algorithm selector (`Match_Algo` enum-driven combo box)
+- [x] `Match_Algo` enum + `AKAZE_Params` + `ORB_Params` + `Auto_Match_Settings` in `pointy/core/auto_match.py`
+- [x] `Auto_Match_Panel` widget (`pointy/sidebar/components/auto_match_panel.py`)
+  - Algorithm selector with per-algo parameter groups (AKAZE / ORB); inactive group hidden
   - "Use Manual GCPs as Prior" checkbox
   - Feature Extraction group: Max Features, Pyramid Level, CLAHE toggle
   - Matching group: Ratio Test, Matcher (Brute-force / FLANN)
   - Outlier Rejection group: Method (RANSAC / MAGSAC), Inlier Threshold
   - Results group: Candidates, Inliers, Coverage, RMSE (read-only)
   - "Run Auto-Match" button emitting `run_requested` signal
-- [ ] `Auto_Match_Controller` skeleton (`pointy/controllers/auto_match_controller.py`)
-  - Wires `run_requested` signal; reads settings from panel; stub returns early
-- [ ] `Tabbed_Sidebar` gains "Auto Match" tab; `get_auto_match_panel()` accessor
-- [ ] `Main_Window` instantiates and connects `Auto_Match_Controller`
+- [x] `Auto_Match_Controller` skeleton (`pointy/controllers/auto_match_controller.py`)
+  - Wires `run_requested` signal; validates preconditions; logs settings; stub returns early
+- [x] `Tabbed_Sidebar` gains "Match" tab; `get_auto_match_panel()` accessor
+- [x] `Main_Window` instantiates and connects `Auto_Match_Controller`
 
 ### Phase 1 — Classical Matching Infrastructure
+
+Core pipeline classes defined in `pointy/core/auto_matcher.py`:
+
+```
+Feature_Extractor (ABC)
+    AKAZE_Extractor        — cv2.AKAZE_create()
+    ORB_Extractor          — cv2.ORB_create()
+    make_extractor()       — factory driven by Match_Algo enum
+
+Feature_Matcher            — kNN + Lowe ratio test; BF or FLANN
+
+Outlier_Filter (ABC)
+    RANSAC_Filter          — cv2.findHomography(..., RANSAC)
+    MAGSAC_Filter          — cv2.findHomography(..., USAC_MAGSAC)
+    make_outlier_filter()  — factory driven by Rejection_Method enum
+
+GCP_Candidate_Set          — NxN spatial grid; best match per cell
+Match_Result               — output dataclass (pixels, geos, mask, stats)
+Auto_Matcher               — orchestrates all stages; .run() entry point
+```
+
+Remaining Phase 1 tasks:
 - [ ] `Reference_Chip_Builder`: fetches and assembles reference tiles for a given bbox + GSD
-- [ ] `Feature_Extractor` ABC: wraps OpenCV AKAZE/ORB; returns `(keypoints, descriptors)`
-  - Concrete subclasses: `AKAZE_Extractor`, `ORB_Extractor`
-  - Factory function driven by `Match_Algo` enum
-- [ ] `Feature_Matcher`: ratio test + optional cross-check; returns raw match list
-- [ ] `RANSAC_Filter`: wraps `cv2.findHomography` RANSAC; returns inlier matches
-- [ ] `GCP_Candidate_Set`: spatially sampled, quality-ranked candidate list
-- [ ] Manual GCP prior integration in `Auto_Match_Controller.run()`
-  - Footprint from manual GCP bounding box
+- [ ] Wire `Auto_Matcher.run()` into `Auto_Match_Controller.on_run_requested()`
+- [ ] Manual GCP prior integration in `Auto_Match_Controller`
+  - Footprint from manual GCP bounding box → reference chip bbox
   - Pre-RANSAC spatial filtering using affine prior from manual pairs
+- [ ] Convert `Match_Result` candidates → `GCP` objects with `source=Match_Algo.value`
+- [ ] Push candidate GCPs into `GCP_Processor` and update GCP manager table
+- [ ] Update `Auto_Match_Panel.update_results()` with live `Match_Result` stats
 
 ### Phase 2 — Model Search & Merge
 - [ ] Direct least-squares baseline (reuse `fit_transformation_model`)

@@ -17,6 +17,7 @@ Sidebar Components - Individual sidebar widget components
 """
 
 # Project Libraries
+from pointy.sidebar.components.auto_match_panel import Auto_Match_Panel
 from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
 from pointy.sidebar.components.gcp_panel import GCP_Panel
 from pointy.sidebar.components.metadata_panel import Metadata_Panel
@@ -24,6 +25,7 @@ from pointy.sidebar.components.tools_panel import Tools_Panel
 from pointy.sidebar.components.view_control_panel import Image_View_Control_Panel
 
 __all__ = [
+    'Auto_Match_Panel',
     'Collection_Nav_Panel',
     'GCP_Panel',
     'Image_View_Control_Panel',
