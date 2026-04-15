@@ -125,11 +125,10 @@ class Tabbed_Sidebar(QWidget):
         auto_match_widget = QWidget()
         auto_match_layout = QVBoxLayout(auto_match_widget)
         auto_match_layout.setContentsMargins(5, 5, 5, 5)
-        auto_match_layout.setSpacing(10)
+        auto_match_layout.setSpacing(0)
 
         self.auto_match_panel = Auto_Match_Panel()
-        auto_match_layout.addWidget(self.auto_match_panel)
-        auto_match_layout.addStretch()
+        auto_match_layout.addWidget(self.auto_match_panel, stretch=1)
 
         self.tab_widget.addTab(auto_match_widget, "Match")
 

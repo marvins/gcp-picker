@@ -120,8 +120,8 @@ def make_outlier_filter(settings: Auto_Match_Settings) -> Outlier_Filter:
     Raises:
         ValueError: If ``settings.rejection_method`` is not supported.
     """
-    if settings.rejection_method == Rejection_Method.RANSAC:
-        return RANSAC_Filter(settings.inlier_threshold)
-    if settings.rejection_method == Rejection_Method.MAGSAC:
-        return MAGSAC_Filter(settings.inlier_threshold)
-    raise ValueError(f'Unsupported rejection method: {settings.rejection_method}')
+    if settings.outlier.rejection_method == Rejection_Method.RANSAC:
+        return RANSAC_Filter(settings.outlier.inlier_threshold)
+    if settings.outlier.rejection_method == Rejection_Method.MAGSAC:
+        return MAGSAC_Filter(settings.outlier.inlier_threshold)
+    raise ValueError(f'Unsupported rejection method: {settings.outlier.rejection_method}')

@@ -25,7 +25,7 @@ import cv2
 import numpy as np
 
 # Project Libraries
-from pointy.core.auto_match import Auto_Match_Settings, Matcher_Type
+from pointy.core.auto_match import Auto_Match_Settings, Matcher_Type, Match_Algo
 
 
 class Feature_Matcher:
@@ -40,10 +40,10 @@ class Feature_Matcher:
     """
 
     def __init__(self, settings: Auto_Match_Settings):
-        self._ratio        = settings.ratio_test
-        self._matcher_type = settings.matcher
+        self._ratio        = settings.matching.ratio_test
+        self._matcher_type = settings.matching.matcher
         self._algo         = settings.algo
-        self._wta_k        = settings.orb.wta_k
+        self._wta_k        = settings.test_extraction.orb.wta_k
 
     def match(self, desc_test: np.ndarray,
               desc_ref:  np.ndarray) -> List[cv2.DMatch]:

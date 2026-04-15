@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pointy_mcpointface"
-version = "1.0.3"
+version = "1.1.0"
 description = "Pointy-McPointface"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -40,10 +40,11 @@ dependencies = [
     "requests>=2.31.0",
     "matplotlib>=3.7.0",
     "folium>=0.14.0",
-    "tomli-w>=1.1.0",
+    "plotly>=5.17.0",
+    "tomli>=2.0.0",
     "tqdm>=4.64.0",
     "python-dotenv>=1.0.0",
-    "terminus-core-python>=0.1.1",
+    "terminus_core>=0.1.7",
 ]
 
 [tool.setuptools.dynamic]
@@ -74,14 +75,15 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/gcp-picker/gcp-picker"
-Documentation = "https://gcp-picker.readthedocs.io"
-Repository = "https://github.com/gcp-picker/gcp-picker.git"
-"Bug Tracker" = "https://github.com/gcp-picker/gcp-picker/issues"
+Homepage = "https://github.com/marvins/gcp-picker"
+Documentation = "https://marvins.github.io/gcp-picker"
+Repository = "https://github.com/marvins/gcp-picker.git"
+"Bug Tracker" = "https://github.com/marvins/gcp-picker/issues"
 
 [project.scripts]
 pointy-mcpointface = "pointy.main:main"
 pointy-model-tester = "pointy.apps.model_tester.main:main"
+pointy-auto-gcp-tester = "pointy.apps.auto_gcp_tester.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

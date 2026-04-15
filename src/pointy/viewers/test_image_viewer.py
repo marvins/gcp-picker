@@ -59,6 +59,7 @@ class Test_Image_Viewer(QWidget):
         self.original_image = None
         self.current_image = None
         self._warped_image = None  # Store warped ortho image separately
+        self.is_loading = False
         self.gcp_points = {}  # gcp_id -> (x, y)
         self.is_orthorectified = False
         self._projector = None
@@ -240,6 +241,7 @@ class Test_Image_Viewer(QWidget):
     def load_image(self, image_path):
         """Load an image file asynchronously."""
         self.image_path = image_path
+        self.is_loading = True
         logging.debug(f"Starting async image load: {image_path}")
 
         # Start async load
@@ -288,6 +290,7 @@ class Test_Image_Viewer(QWidget):
 
             # Hide loading overlay and restore background
             logging.debug("Load completed, hiding overlay")
+            self.is_loading = False
             self.hide_loading_overlay()
             self.image_view.setStyleSheet("""
                 QGraphicsView {
@@ -315,6 +318,7 @@ class Test_Image_Viewer(QWidget):
         # Update UI
         self.info_label.setText(f"Failed to load: {Path(image_path).name}")
         self.status_label.setText(f"Error: {error}")
+        self.is_loading = False
 
         # Hide loading overlay and restore background
         self.hide_loading_overlay()
@@ -608,6 +612,22 @@ class Test_Image_Viewer(QWidget):
         self.gcp_points.clear()
         self.draw_gcp_points()
 
+    def get_image_array(self) -> np.ndarray | None:
+        """Return the original loaded image as a numpy array (H, W, C) uint8, or None."""
+        return self.original_image
+
+    def set_candidate_markers(self, pts: list[tuple[float, float]]):
+        """Display auto-match candidate positions as cyan crosses on the image.
+
+        Args:
+            pts: List of (x, y) pixel coordinates in full-res image space.
+        """
+        self.image_view.set_candidate_markers(pts)
+
+    def clear_candidate_markers(self):
+        """Remove all auto-match candidate markers from the image view."""
+        self.image_view.clear_candidate_markers()
+
     def display_warped_array(self, warped: np.ndarray, warp_extent: Warp_Extent | None = None):
         """Display a pre-warped numpy image array (H x W x 3, uint8) as the ortho view."""
         self._warped_image = warped.copy()
@@ -640,8 +660,8 @@ class Test_Image_Viewer(QWidget):
             self.status_label.setText(f"Error loading orthorectified image: {str(e)}")
 
     def has_image(self):
-        """Check if an image is loaded."""
-        return self.current_image is not None
+        """Check if an image is fully loaded and ready (not still loading)."""
+        return self.current_image is not None and not self.is_loading
 
     def get_image_path(self):
         """Get the current image path."""

@@ -25,6 +25,7 @@ from pathlib import Path
 
 #  Third-Party Libraries
 import folium
+import numpy as np
 
 # Set Qt attributes BEFORE any Qt imports
 from qtpy.QtCore import QCoreApplication, Qt
@@ -43,8 +44,6 @@ from qtpy.QtWidgets import (QComboBox, QDoubleSpinBox, QFormLayout, QFrame, QHBo
 from pointy.core.config_manager import get_config_manager
 from tmns.geo.terrain import Manager as Terrain_Manager
 from tmns.geo.coord import Geographic
-from pointy.core.wms_client import WMSClient
-
 
 class Leaflet_Bridge(QObject):
     """Bridge between JavaScript and Python for communication."""
@@ -756,13 +755,13 @@ class Leaflet_Reference_Viewer(QWidget):
             return {}
         return self.current_reference.copy()
 
-    def recreate_map_with_center(self, lat: float, lon: float, zoom: int = 12):
-        """Recreate the map centered on a specific location."""
+    def recreate_map_with_center(self, center: Geographic, zoom: int = 12):
+        """Recreate the map centered on a geographic coordinate."""
         if self.web_view is None:
             self.logger.warning("Web view not available, cannot recreate map")
             return
 
-        self.logger.info(f"Recreating map centered on ({lat}, {lon}) zoom {zoom}, "
+        self.logger.info(f"Recreating map centered on {center} zoom {zoom}, "
                         f"was_ready={self._map_was_ready}, "
                         f"pending_gcps={len(self.pending_gcps)}, "
                         f"gcp_points={len(self.gcp_points)}")
@@ -772,7 +771,7 @@ class Leaflet_Reference_Viewer(QWidget):
 
         # Create a new folium map centered on the specified location
         m = folium.Map(
-            location=[lat, lon],
+            location=center.to_leaflet(),
             zoom_start=zoom,
             tiles=None
         )
@@ -805,7 +804,79 @@ class Leaflet_Reference_Viewer(QWidget):
         self.map_is_ready = False
         # Don't queue existing GCPs - they're already in gcp_points and will be redrawn by on_map_ready
         self.web_view.setUrl(QUrl.fromLocalFile(self._map_html_path))
-        self.status_label.setText(f"Map centered on ({lat:.4f}, {lon:.4f})")
+        self.status_label.setText(f"Map centered on ({center.latitude_deg:.4f}, {center.longitude_deg:.4f})")
+
+    def grab_ref_chip(self, callback) -> None:
+        """Capture the current map viewport as a numpy array and call back with it.
+
+        Grabs a screenshot of the web view and queries JS for the current map
+        geographic bounds.  Once both are available, calls:
+
+            callback(chip: np.ndarray, geo_transform: Callable[[float, float], tuple[float, float]])
+
+        where ``geo_transform(px_x, px_y) -> (lon, lat)`` maps chip pixel
+        coordinates to geographic coordinates using a linear interpolation
+        over the viewport bounds.
+
+        Args:
+            callback: Called with (chip_array, geo_transform) once ready.
+        """
+        if self.web_view is None or not self.map_is_ready:
+            self.logger.warning("grab_ref_chip: map not ready")
+            callback(None, None)
+            return
+
+        pixmap = self.web_view.grab()
+        chip_w = pixmap.width()
+        chip_h = pixmap.height()
+
+        def _on_bounds(result):
+            try:
+                if not result:
+                    self.logger.error("grab_ref_chip: getBounds() returned empty result")
+                    callback(None, None)
+                    return
+
+                sw_lat = float(result['sw_lat'])
+                sw_lon = float(result['sw_lon'])
+                ne_lat = float(result['ne_lat'])
+                ne_lon = float(result['ne_lon'])
+
+                image = pixmap.toImage()
+                image = image.convertToFormat(image.Format.Format_RGB888)
+                img_w = image.width()
+                img_h = image.height()
+                stride = image.bytesPerLine()
+                ptr = image.bits()
+                ptr.setsize(img_h * stride)
+                arr = np.frombuffer(ptr, dtype=np.uint8).reshape((img_h, stride))
+                chip = arr[:, :img_w * 3].reshape((img_h, img_w, 3)).copy()
+                chip_w = img_w
+                chip_h = img_h
+
+                def geo_transform(px_x: float, px_y: float) -> tuple[float, float]:
+                    lon = sw_lon + (px_x / chip_w) * (ne_lon - sw_lon)
+                    lat = ne_lat - (px_y / chip_h) * (ne_lat - sw_lat)
+                    return lon, lat
+
+                callback(chip, geo_transform)
+
+            except Exception as exc:
+                self.logger.error(f"grab_ref_chip: failed to process result: {exc}")
+                callback(None, None)
+
+        js = """
+(function() {
+    var b = map.getBounds();
+    return {
+        sw_lat: b.getSouthWest().lat,
+        sw_lon: b.getSouthWest().lng,
+        ne_lat: b.getNorthEast().lat,
+        ne_lon: b.getNorthEast().lng
+    };
+})()
+"""
+        self.web_view.page().runJavaScript(js, _on_bounds)
 
     def _query_elevation_throttled(self):
         """Query elevation for pending cursor coordinates (throttled)."""

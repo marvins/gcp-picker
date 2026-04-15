@@ -32,6 +32,7 @@ from tomli_w import dump as toml_dump
 
 # Project Libraries
 from pointy.core.imagery_api import Imagery_Loader
+from tmns.geo.coord import Geographic
 
 
 class Image_Controller:
@@ -59,7 +60,7 @@ class Image_Controller:
         self._status    = status_bar
         self._parent    = parent_widget
         self._imagery   = Imagery_Loader()
-        self._pending_seed: tuple[float, float] | None = None
+        self._pending_seed: Geographic | None = None
         self._ortho_ctrl = ortho_controller
 
     def connect(self):
@@ -76,10 +77,11 @@ class Image_Controller:
     def on_image_loaded(self, image_path: str):
         """Handle test image load completion."""
         if self._pending_seed:
-            lat, lon = self._pending_seed
-            self._ref.set_center(lat, lon)
+            seed = self._pending_seed
+            self._ref.recreate_map_with_center(seed)
             self._status.showMessage(
-                f'Loaded: {Path(image_path).name} (seed: {lat:.4f}, {lon:.4f})'
+                f'Loaded: {Path(image_path).name} '
+                f'(seed: {seed.latitude_deg:.4f}, {seed.longitude_deg:.4f})'
             )
             self._pending_seed = None
         else:
@@ -242,10 +244,9 @@ class Image_Controller:
 
             seed = self._coll_mgr.get_collection_seed_location()
             if seed:
-                lat, lon = seed
-                self._ref.recreate_map_with_center(lat, lon)
+                self._ref.recreate_map_with_center(seed)
                 self._status.showMessage(
-                    f'Centered on collection: ({lat:.4f}, {lon:.4f}) - {Path(first_image).name}'
+                    f'Centered on collection: ({seed.latitude_deg:.4f}, {seed.longitude_deg:.4f}) - {Path(first_image).name}'
                 )
 
         except Exception as e:
@@ -263,7 +264,7 @@ class Image_Controller:
 
         self._test.load_image(image_path)
 
-        if needs_seed and seed:
+        if needs_seed and seed is not None:
             self._pending_seed = seed
         else:
             self._pending_seed = None

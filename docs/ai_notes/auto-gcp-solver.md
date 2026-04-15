@@ -397,7 +397,38 @@ Remaining Phase 1 tasks:
   - Pre-RANSAC spatial filtering using affine prior from manual pairs
 - [ ] Convert `Match_Result` candidates → `GCP` objects with `source=Match_Algo.value`
 - [ ] Push candidate GCPs into `GCP_Processor` and update GCP manager table
-- [ ] Update `Auto_Match_Panel.update_results()` with live `Match_Result` stats
+- [x] `Match_Results_Panel` widget in `Auto_Match_Panel`: stat chips + candidate table
+- [x] `Auto_Match_Panel.update_results()` accepts `candidate_rows` list to populate table
+- [ ] Wire controller → `panel.update_results()` with live `Match_Result` stats after run
+
+### Viewer Candidate Drawing (TODO — needs design)
+
+After `Auto_Matcher.run()` returns `Match_Result.candidate_pixels` (Nx2, full-res image
+space), we want to draw those as cyan crosses on `Test_Image_Viewer`.
+
+**What's ready:**
+- `Graphics_Image_View.set_candidate_markers(pts)` / `clear_candidate_markers()` — paints
+  cyan crosses at provided (x, y) scene coords on each `paintEvent`.
+- `Test_Image_Viewer.set_candidate_markers(pts)` / `clear_candidate_markers()` — thin
+  passthroughs to `image_view`.
+
+**Open question — coordinate space:**
+`candidate_pixels` are in full-res image coordinates (pyramid scale already applied back
+in `pipeline.py` via `* scale`).  `Graphics_Image_View` scene coordinates are also
+full-res image pixels (1:1 with the loaded image).  So **no extra transform is needed**
+in the raw (non-orthorectified) view.  However:
+
+- In orthorectified view (`is_orthorectified=True`), the scene shows the warped output
+  grid, not the original image.  Candidate markers must be projected through the fitted
+  projector to ortho-pixel space, same as `draw_gcp_points()` does.  This requires a
+  fitted projector to be present — if none exists, markers are simply not drawn in ortho
+  mode.
+- `Auto_Match_Controller` needs access to `test_viewer` (already has it) to call
+  `set_candidate_markers(result.candidate_pixels.tolist())` after a successful run.
+- `clear_candidate_markers()` should be called at the start of each new run (in
+  `on_run_requested` before `panel.clear_results()`).
+
+**Deferred until controller pipeline wiring (Phase 1) is complete.**
 
 ### Phase 2 — Model Search & Merge
 - [ ] Direct least-squares baseline (reuse `fit_transformation_model`)

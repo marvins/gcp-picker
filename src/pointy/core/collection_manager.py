@@ -161,15 +161,14 @@ class Collection_Manager(QObject):
             return self.current_collection.image_paths[self.current_image_index]
         return None
 
-    def get_collection_seed_location(self) -> tuple[float, float] | None:
-        """Get the collection's seed location (lat, lon).
+    def get_collection_seed_location(self) -> Geographic | None:
+        """Get the collection's seed location.
 
         Returns:
-            Tuple of (latitude, longitude) or None if no collection loaded
+            Geographic coordinate or None if no collection loaded.
         """
         if self.current_collection:
-            geo = self.current_collection.location.location
-            return (geo.latitude_deg, geo.longitude_deg)
+            return self.current_collection.location.location
         return None
 
     def has_collection(self) -> bool:

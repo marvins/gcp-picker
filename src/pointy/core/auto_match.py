@@ -92,31 +92,104 @@ class ORB_Params:
 
 
 @dataclass
-class Auto_Match_Settings:
-    """All configurable parameters for a single auto-match run.
+class Feature_Extraction_Settings:
+    """Per-image-source feature extraction parameters (Stage 1).
+
+    One instance is created for the test image and one for the reference chip;
+    they can have independent pyramid levels, CLAHE, and feature counts.
 
     Attributes:
-        algo:              Feature extraction algorithm.
-        use_manual_prior:  Seed footprint and spatial filter from existing manual GCPs.
-        max_features:      Maximum keypoints detected per image (both algos).
-        pyramid_level:     Downsampling level before extraction (0 = full res,
-                           1 = 1/2, 2 = 1/4, 3 = 1/8).
-        clahe:             Apply CLAHE contrast enhancement before extraction.
-        ratio_test:        Lowe ratio test threshold (0–1, lower = stricter).
-        matcher:           Nearest-neighbour matcher type.
-        rejection_method:  Outlier rejection algorithm.
-        inlier_threshold:  RANSAC / MAGSAC inlier distance in pixels.
-        akaze:             AKAZE-specific tunable parameters.
-        orb:               ORB-specific tunable parameters.
+        max_features:  Maximum keypoints returned by the detector.
+        pyramid_level: Downsampling before extraction (0 = full res,
+                       1 = ½, 2 = ¼, 3 = ⅛).  Test images typically need
+                       level 2; reference chips are already display-res so 0.
+        clahe:         Apply CLAHE contrast enhancement before extraction.
+                       Useful for 16-bit / IR imagery; disable for
+                       pre-normalised tile imagery.
+        akaze:         AKAZE-specific tunable parameters.
+        orb:           ORB-specific tunable parameters.
     """
-    algo:              Match_Algo       = Match_Algo.AKAZE
-    use_manual_prior:  bool             = True
-    max_features:      int              = 2000
-    pyramid_level:     int              = 2
-    clahe:             bool             = True
-    ratio_test:        float            = 0.75
-    matcher:           Matcher_Type     = Matcher_Type.FLANN
+    max_features:  int          = 2000
+    pyramid_level: int          = 0
+    clahe:         bool         = False
+    akaze:         AKAZE_Params = field(default_factory=AKAZE_Params)
+    orb:           ORB_Params   = field(default_factory=ORB_Params)
+
+    def to_log_string(self, algo: 'Match_Algo') -> str:
+        lines = [f'max_features={self.max_features}, pyramid={self.pyramid_level}, clahe={self.clahe}']
+        if algo == Match_Algo.AKAZE:
+            p = self.akaze
+            lines.append(f'akaze(threshold={p.threshold}, octaves={p.n_octaves}, layers={p.n_octave_layers})')
+        else:
+            p = self.orb
+            lines.append(f'orb(scale={p.scale_factor}, levels={p.n_levels}, edge={p.edge_threshold}, patch={p.patch_size})')
+        return ', '.join(lines)
+
+
+@dataclass
+class Matching_Settings:
+    """Descriptor matching parameters (Stage 2).
+
+    Attributes:
+        ratio_test: Lowe ratio test threshold (0–1, lower = stricter).
+        matcher:    Nearest-neighbour matcher backend.
+    """
+    ratio_test: float        = 0.75
+    matcher:    Matcher_Type = Matcher_Type.FLANN
+
+    def to_log_string(self) -> str:
+        return f'matcher={self.matcher.value.upper()}, ratio={self.ratio_test}'
+
+
+@dataclass
+class Outlier_Settings:
+    """Outlier rejection parameters (Stage 3).
+
+    Attributes:
+        rejection_method: Algorithm used (RANSAC or MAGSAC).
+        inlier_threshold: Maximum reprojection error (pixels) to count as inlier.
+    """
     rejection_method:  Rejection_Method = Rejection_Method.RANSAC
     inlier_threshold:  float            = 3.0
-    akaze:             AKAZE_Params     = field(default_factory=AKAZE_Params)
-    orb:               ORB_Params       = field(default_factory=ORB_Params)
+
+    def to_log_string(self) -> str:
+        return f'rejection={self.rejection_method.value.upper()}, threshold={self.inlier_threshold}px'
+
+
+@dataclass
+class Auto_Match_Settings:
+    """Top-level settings composing all pipeline stage configurations.
+
+    Attributes:
+        algo:            Feature extraction algorithm (shared by both extractors).
+        use_manual_prior: Seed footprint and spatial filter from existing manual GCPs.
+        test_extraction: Extraction settings for the test image.
+        ref_extraction:  Extraction settings for the reference chip.  Defaults differ
+                         from test: pyramid=0 (chip is already display-res), clahe=False.
+        matching:        Stage 2 matching settings.
+        outlier:         Stage 3 outlier rejection settings.
+    """
+    algo:             Match_Algo                = Match_Algo.AKAZE
+    use_manual_prior: bool                      = True
+    test_extraction:  Feature_Extraction_Settings = field(
+        default_factory=lambda: Feature_Extraction_Settings(
+            max_features=2000, pyramid_level=2, clahe=True
+        )
+    )
+    ref_extraction:   Feature_Extraction_Settings = field(
+        default_factory=lambda: Feature_Extraction_Settings(
+            max_features=2000, pyramid_level=0, clahe=False
+        )
+    )
+    matching:         Matching_Settings         = field(default_factory=Matching_Settings)
+    outlier:          Outlier_Settings          = field(default_factory=Outlier_Settings)
+
+    def to_log_string(self) -> str:
+        """Return a compact human-readable summary of all settings."""
+        return (
+            f'algo={self.algo.value.upper()}, manual_prior={self.use_manual_prior} | '
+            f'test[{self.test_extraction.to_log_string(self.algo)}] | '
+            f'ref[{self.ref_extraction.to_log_string(self.algo)}] | '
+            f'{self.matching.to_log_string()} | '
+            f'{self.outlier.to_log_string()}'
+        )

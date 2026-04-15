@@ -25,8 +25,8 @@ from pointy.core.orthorectifier import Orthorectifier
 __all__ = [
     'Collection_Manager',
     'Collection_Info',
-    'Imagery_Loader',
-    'Imagery_Info',
     'GCP_Processor',
+    'Imagery_Info',
+    'Imagery_Loader',
     'Orthorectifier',
 ]

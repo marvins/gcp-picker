@@ -17,7 +17,6 @@ Ground Control Point (GCP) data structure
 """
 
 #  Python Standard Libraries
-import os
 from dataclasses import dataclass
 
 #  Third-Party Libraries
@@ -25,7 +24,6 @@ from rasterio.control import GroundControlPoint
 
 #  Project Libraries
 from tmns.geo.coord import Geographic, Pixel, UTM
-from tmns.geo.terrain import elevation
 
 @dataclass
 class GCP:
@@ -40,22 +38,9 @@ class GCP:
     enabled: bool = True
 
     def __post_init__(self):
-        """Post-initialization validation and elevation lookup."""
+        """Post-initialization validation."""
         if self.id <= 0:
             raise ValueError("GCP ID must be positive")
-
-        # Auto-populate elevation if not provided and not in test environment
-        # Skip elevation lookup in tests to avoid terrain catalog dependency
-        skip_elevation = os.environ.get('SKIP_ELEVATION_LOOKUP', 'false').lower() == 'true'
-
-        if not skip_elevation and self.geographic.altitude_m is None:
-            try:
-                elev = elevation(self.geographic)
-                if elev is not None:
-                    self.geographic.altitude_m = elev
-            except Exception:
-                # Silently fail elevation lookup for testing
-                pass
 
     def to_dict(self):
         """Convert GCP to dictionary."""

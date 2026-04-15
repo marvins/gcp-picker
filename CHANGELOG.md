@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-13
+
+### Added
+* Documentation site (Jupyter Book / MyST) with GitHub Actions deploy to GitHub Pages; user guide stubs for all major workflows
+* Auto-Match background execution: `Auto_Match_Worker` QThread with progress bar and stage signals
+* `Match_Results_Panel` showing summary stats and scrollable candidate table
+* Candidate markers (cyan crosses) drawn on `Graphics_Image_View` for auto-match results
+* `is_loading` state on `Test_Image_Viewer` to guard against operating on partially loaded images
+
+### Fixed
+* Auto-Match run button now blocked while image is loading; errors caught and shown in status bar instead of crashing
+
+
 ## [1.0.3] - 2026-04-12
 
 ### Added

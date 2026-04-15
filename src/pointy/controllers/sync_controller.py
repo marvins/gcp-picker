@@ -70,7 +70,7 @@ class Sync_Controller:
             return
 
         zoom = self._leaflet_zoom_from_test_zoom(self._test.image_view.get_zoom())
-        self._ref.recreate_map_with_center(geo.latitude_deg, geo.longitude_deg, zoom=zoom)
+        self._ref.recreate_map_with_center(geo, zoom=zoom)
 
     def _apply_ref_center_to_test(self, lat: float, lon: float, zoom: float):
         """Scroll+zoom the test viewer to match the reported map center and Leaflet zoom."""
@@ -105,9 +105,7 @@ class Sync_Controller:
 
         self._test.image_view.set_zoom(1.0)
         self._test.image_view.centerOn(gcp.test_pixel.x_px, gcp.test_pixel.y_px)
-        self._ref.recreate_map_with_center(
-            gcp.geographic.latitude_deg, gcp.geographic.longitude_deg, zoom=17
-        )
+        self._ref.recreate_map_with_center(gcp.geographic, zoom=17)
         self._status.showMessage(
             f'Navigated to GCP {gcp_id} — '
             f'pixel ({gcp.test_pixel.x_px:.0f}, {gcp.test_pixel.y_px:.0f}), '

@@ -43,6 +43,7 @@ class Graphics_Image_View(QGraphicsView):
 
         self.pixmap_item = None
         self.gcp_points = {}  # gcp_id -> (x, y)
+        self.candidate_markers: list[tuple[float, float]] = []  # (x, y) auto-match candidates
         self.highlighted_point = None
         self.pending_test_point = None  # (x, y) for pending point
         self.georeferencing = None  # (transform, width, height)
@@ -251,6 +252,20 @@ class Graphics_Image_View(QGraphicsView):
         self.gcp_points.clear()
         self.update()
 
+    def set_candidate_markers(self, pts: list[tuple[float, float]]):
+        """Set auto-match candidate pixel coordinates (full-res image space).
+
+        Args:
+            pts: List of (x, y) positions in image pixel coordinates.
+        """
+        self.candidate_markers = list(pts)
+        self.update()
+
+    def clear_candidate_markers(self):
+        """Remove all auto-match candidate markers."""
+        self.candidate_markers.clear()
+        self.update()
+
     def set_georeferencing(self, transform, width, height):
         """Set georeferencing transform for coordinate conversion."""
         self.georeferencing = (transform, width, height)
@@ -320,6 +335,17 @@ class Graphics_Image_View(QGraphicsView):
             painter.setPen(QPen(QColor(255, 0, 0), 1))
             painter.setFont(QFont("Arial", 10, QFont.Bold))
             painter.drawText(view_pos + QPoint(13, -5), "PENDING")
+
+        # Draw auto-match candidate markers (cyan crosses)
+        if self.candidate_markers:
+            cross_r  = 7
+            cross_pen = QPen(QColor(0, 220, 220), 1)
+            painter.setPen(cross_pen)
+            painter.setBrush(Qt.NoBrush)
+            for (x, y) in self.candidate_markers:
+                vp = self.mapFromScene(QPointF(x, y))
+                painter.drawLine(vp.x() - cross_r, vp.y(), vp.x() + cross_r, vp.y())
+                painter.drawLine(vp.x(), vp.y() - cross_r, vp.x(), vp.y() + cross_r)
 
         # Draw GCP points
         if self.gcp_points:

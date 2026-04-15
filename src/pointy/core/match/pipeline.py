@@ -57,10 +57,11 @@ class Auto_Matcher:
     MIN_INLIERS: int = 4
 
     def __init__(self, settings: Auto_Match_Settings):
-        self._settings  = settings
-        self._extractor = make_extractor(settings)
-        self._matcher   = Feature_Matcher(settings)
-        self._filter    = make_outlier_filter(settings)
+        self._settings       = settings
+        self._test_extractor = make_extractor(settings, settings.test_extraction)
+        self._ref_extractor  = make_extractor(settings, settings.ref_extraction)
+        self._matcher        = Feature_Matcher(settings)
+        self._filter         = make_outlier_filter(settings)
 
     def run(self,
             test_image:        np.ndarray,
@@ -84,12 +85,15 @@ class Auto_Matcher:
         result = Match_Result()
 
         # ── Stage 1: Feature Extraction ──────────────────────────────────────
+        te = self._settings.test_extraction
+        re = self._settings.ref_extraction
         logging.info(
             f'Auto_Matcher: extracting (algo={self._settings.algo.value}, '
-            f'pyramid={self._settings.pyramid_level}, clahe={self._settings.clahe})'
+            f'test[pyramid={te.pyramid_level}, clahe={te.clahe}, max={te.max_features}], '
+            f'ref[pyramid={re.pyramid_level}, clahe={re.clahe}, max={re.max_features}])'
         )
-        kps_test, desc_test = self._extractor.extract(test_image)
-        kps_ref,  desc_ref  = self._extractor.extract(ref_chip)
+        kps_test, desc_test = self._test_extractor.extract(test_image)
+        kps_ref,  desc_ref  = self._ref_extractor.extract(ref_chip)
         logging.info(
             f'Auto_Matcher: {len(kps_test)} test kps, {len(kps_ref)} ref kps'
         )
@@ -110,7 +114,7 @@ class Auto_Matcher:
             result.elapsed_sec = time.perf_counter() - t0
             return result
 
-        scale    = 2 ** self._settings.pyramid_level
+        scale    = 2 ** self._settings.test_extraction.pyramid_level
         pts_test = np.array(
             [kps_test[m.queryIdx].pt for m in good_matches], dtype=np.float32
         ) * scale
@@ -124,7 +128,7 @@ class Auto_Matcher:
         result.homography = H
         logging.info(
             f'Auto_Matcher: {result.n_inliers} inliers after '
-            f'{self._settings.rejection_method.value.upper()}'
+            f'{self._settings.outlier.rejection_method.value.upper()}'
         )
 
         if result.n_inliers < self.MIN_INLIERS:
@@ -133,7 +137,7 @@ class Auto_Matcher:
             return result
 
         # ── Stage 4: Candidate GCP Set ────────────────────────────────────────
-        scaled_img     = Feature_Extractor.downscale(test_image, self._settings.pyramid_level)
+        scaled_img     = Feature_Extractor.downscale(test_image, self._settings.test_extraction.pyramid_level)
         h_test, w_test = scaled_img.shape[:2]
         candidates     = GCP_Candidate_Set((h_test, w_test))
 

@@ -18,14 +18,177 @@ Auto Match Panel - Settings and results for automatic GCP matching.
 
 # Third-Party Libraries
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtWidgets import (QWidget, QVBoxLayout, QLabel,
+from qtpy.QtGui import QColor
+from qtpy.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QComboBox, QGroupBox, QCheckBox,
                              QDoubleSpinBox, QSpinBox, QFormLayout, QSizePolicy,
-                             QScrollArea)
+                             QScrollArea, QTableWidget, QTableWidgetItem,
+                             QHeaderView, QAbstractItemView, QProgressBar)
 
 # Project Libraries
-from pointy.core.auto_match import (Auto_Match_Settings, AKAZE_Params, ORB_Params,
+from pointy.core.auto_match import (Auto_Match_Settings, Feature_Extraction_Settings,
+                                    Matching_Settings, Outlier_Settings,
+                                    AKAZE_Params, ORB_Params,
                                     Match_Algo, Matcher_Type, Rejection_Method)
+
+
+class Match_Results_Panel(QWidget):
+    """Results display for the automatic GCP matcher.
+
+    Shows a summary stats row (Candidates / Inliers / Coverage / RMSE) and a
+    scrollable table listing every candidate GCP with its pixel and geographic
+    coordinates.
+
+    Public API:
+        update_stats(candidates, inliers, coverage, rmse)  — refresh stat chips
+        set_candidates(rows)                                — populate table
+        clear()                                             — reset everything
+    """
+
+    _HEADERS = ["#", "Px X", "Px Y", "Lon", "Lat"]
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._setup_ui()
+
+    # ------------------------------------------------------------------
+    # Construction
+    # ------------------------------------------------------------------
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        layout.addWidget(self._build_header())
+        layout.addWidget(self._build_stats_row())
+        layout.addWidget(self._build_table(), stretch=1)
+
+    def _build_header(self) -> QLabel:
+        lbl = QLabel("Results")
+        lbl.setStyleSheet("""
+            QLabel {
+                font-weight: bold;
+                font-size: 10pt;
+                color: #333;
+                padding: 4px 2px 2px 2px;
+            }
+        """)
+        return lbl
+
+    def _build_stats_row(self) -> QWidget:
+        row = QWidget()
+        h   = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+
+        def chip(label: str) -> tuple[QLabel, QLabel]:
+            cell = QWidget()
+            cell.setStyleSheet("""
+                QWidget {
+                    background: #f0f0f0;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                }
+            """)
+            v = QVBoxLayout(cell)
+            v.setContentsMargins(4, 3, 4, 3)
+            v.setSpacing(1)
+            title = QLabel(label)
+            title.setStyleSheet("font-size: 7pt; color: #666; font-weight: bold; border: none;")
+            title.setAlignment(Qt.AlignCenter)
+            value = QLabel("—")
+            value.setStyleSheet("font-size: 9pt; color: #111; border: none;")
+            value.setAlignment(Qt.AlignCenter)
+            v.addWidget(title)
+            v.addWidget(value)
+            return cell, value
+
+        cand_cell,  self._candidates_lbl = chip("Candidates")
+        inlr_cell,  self._inliers_lbl   = chip("Inliers")
+        cov_cell,   self._coverage_lbl  = chip("Coverage")
+        rmse_cell,  self._rmse_lbl      = chip("RMSE")
+
+        for cell in (cand_cell, inlr_cell, cov_cell, rmse_cell):
+            h.addWidget(cell, stretch=1)
+
+        return row
+
+    def _build_table(self) -> QTableWidget:
+        self._table = QTableWidget(0, len(self._HEADERS))
+        self._table.setHorizontalHeaderLabels(self._HEADERS)
+        self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._table.setAlternatingRowColors(True)
+        self._table.verticalHeader().setVisible(False)
+        self._table.setStyleSheet("""
+            QTableWidget {
+                font-size: 8pt;
+                gridline-color: #e0e0e0;
+            }
+            QHeaderView::section {
+                background-color: #e8e8e8;
+                font-weight: bold;
+                font-size: 7pt;
+                padding: 2px;
+                border: 1px solid #ccc;
+            }
+            QTableWidget::item:alternate {
+                background-color: #f9f9f9;
+            }
+        """)
+        hdr = self._table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        for col in range(1, len(self._HEADERS)):
+            hdr.setSectionResizeMode(col, QHeaderView.Stretch)
+        self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        return self._table
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def update_stats(self, candidates: int, inliers: int,
+                     coverage: float | None, rmse: float | None):
+        """Refresh the four summary stat chips.
+
+        Args:
+            candidates: Total keypoints / ratio-test survivors.
+            inliers:    Matches surviving outlier rejection.
+            coverage:   Spatial coverage 0–1, or None.
+            rmse:       RMSE in pixels after fitting, or None.
+        """
+        self._candidates_lbl.setText(str(candidates))
+        self._inliers_lbl.setText(str(inliers))
+        self._coverage_lbl.setText(f"{coverage * 100:.0f}%" if coverage is not None else "—")
+        self._rmse_lbl.setText(f"{rmse:.2f} px" if rmse is not None else "—")
+
+    def set_candidates(self, rows: list[tuple[float, float, float, float]]):
+        """Populate the candidate table.
+
+        Args:
+            rows: Sequence of (px_x, px_y, lon, lat) for each candidate GCP.
+        """
+        self._table.setRowCount(0)
+        for i, (px_x, px_y, lon, lat) in enumerate(rows):
+            self._table.insertRow(i)
+            idx_item = QTableWidgetItem(str(i + 1))
+            idx_item.setForeground(QColor(80, 80, 80))
+            self._table.setItem(i, 0, idx_item)
+            self._table.setItem(i, 1, QTableWidgetItem(f"{px_x:.1f}"))
+            self._table.setItem(i, 2, QTableWidgetItem(f"{px_y:.1f}"))
+            self._table.setItem(i, 3, QTableWidgetItem(f"{lon:.6f}"))
+            self._table.setItem(i, 4, QTableWidgetItem(f"{lat:.6f}"))
+        self._table.scrollToTop()
+
+    def clear(self):
+        """Reset stats and clear the candidate table."""
+        self._candidates_lbl.setText("—")
+        self._inliers_lbl.setText("—")
+        self._coverage_lbl.setText("—")
+        self._rmse_lbl.setText("—")
+        self._table.setRowCount(0)
 
 
 class Auto_Match_Panel(QWidget):
@@ -65,7 +228,7 @@ class Auto_Match_Panel(QWidget):
         scroll_layout.addWidget(self._build_matching_group())
         scroll_layout.addWidget(self._build_rejection_group())
         scroll_layout.addWidget(self._build_results_group())
-        scroll_layout.addStretch()
+        # No stretch - groups should expand to fill available vertical space
 
         self._on_algo_changed(0)
 
@@ -75,6 +238,15 @@ class Auto_Match_Panel(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setFrameShape(QScrollArea.NoFrame)
         layout.addWidget(scroll, stretch=1)
+
+        # Progress bar (hidden by default, shown during execution)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
 
         self.run_btn = QPushButton("Run Auto-Match")
         self.run_btn.setToolTip("Run all stages and populate the GCP table with candidates")
@@ -212,6 +384,8 @@ class Auto_Match_Panel(QWidget):
         form.addRow("Max Features", self.max_features_spin)
 
         self.pyramid_combo = QComboBox()
+        self.pyramid_combo.setMinimumWidth(120)
+        self.pyramid_combo.setStyleSheet("color: black; background-color: white;")
         pyramid_labels = ["0 — full res", "1 — 1/2 res", "2 — 1/4 res", "3 — 1/8 res"]
         for i, label in enumerate(pyramid_labels):
             self.pyramid_combo.addItem(label, userData=i)
@@ -241,6 +415,8 @@ class Auto_Match_Panel(QWidget):
         form.addRow("Ratio Test", self.ratio_spin)
 
         self.matcher_combo = QComboBox()
+        self.matcher_combo.setMinimumWidth(120)
+        self.matcher_combo.setStyleSheet("color: black; background-color: white;")
         for m in Matcher_Type:
             self.matcher_combo.addItem(m.value.upper(), userData=m)
         self.matcher_combo.setCurrentIndex(1)
@@ -256,6 +432,8 @@ class Auto_Match_Panel(QWidget):
         form.setSpacing(6)
 
         self.rejection_combo = QComboBox()
+        self.rejection_combo.setMinimumWidth(120)
+        self.rejection_combo.setStyleSheet("color: black; background-color: white;")
         for r in Rejection_Method:
             self.rejection_combo.addItem(r.value.upper(), userData=r)
         self.rejection_combo.setCurrentIndex(0)
@@ -272,75 +450,117 @@ class Auto_Match_Panel(QWidget):
         self._style_group(group)
         return group
 
-    def _build_results_group(self) -> QGroupBox:
-        """Read-only results display."""
-        group = QGroupBox("Results")
-        form = QFormLayout(group)
-        form.setSpacing(6)
-
-        self._candidates_label = QLabel("—")
-        self._inliers_label    = QLabel("—")
-        self._coverage_label   = QLabel("—")
-        self._rmse_label       = QLabel("—")
-
-        form.addRow("Candidates", self._candidates_label)
-        form.addRow("Inliers",    self._inliers_label)
-        form.addRow("Coverage",   self._coverage_label)
-        form.addRow("RMSE",       self._rmse_label)
-
-        self._style_group(group)
-        return group
+    def _build_results_group(self) -> QWidget:
+        """Rich results panel: summary stats + scrollable candidate table."""
+        self._results_panel = Match_Results_Panel()
+        return self._results_panel
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def get_akaze_params(self) -> AKAZE_Params:
+        """Return AKAZE parameters from the panel controls."""
+        return AKAZE_Params(
+            threshold       = self.akaze_threshold_spin.value(),
+            n_octaves       = self.akaze_octaves_spin.value(),
+            n_octave_layers = self.akaze_octave_layers_spin.value(),
+        )
+
+    def get_orb_params(self) -> ORB_Params:
+        """Return ORB parameters from the panel controls."""
+        return ORB_Params(
+            scale_factor   = self.orb_scale_factor_spin.value(),
+            n_levels       = self.orb_n_levels_spin.value(),
+            edge_threshold = self.orb_edge_threshold_spin.value(),
+            patch_size     = self.orb_patch_size_spin.value(),
+        )
+
+    def get_test_extraction(self) -> Feature_Extraction_Settings:
+        """Return test-image extraction settings from the panel controls."""
+        return Feature_Extraction_Settings(
+            max_features  = self.max_features_spin.value(),
+            pyramid_level = self.pyramid_combo.currentData(),
+            clahe         = self.clahe_cb.isChecked(),
+            akaze         = self.get_akaze_params(),
+            orb           = self.get_orb_params(),
+        )
+
+    def get_ref_extraction(self) -> Feature_Extraction_Settings:
+        """Return reference-chip extraction settings (fixed: full-res, no CLAHE)."""
+        return Feature_Extraction_Settings(
+            max_features  = self.max_features_spin.value(),
+            pyramid_level = 0,
+            clahe         = False,
+            akaze         = self.get_akaze_params(),
+            orb           = self.get_orb_params(),
+        )
+
+    def get_matching(self) -> Matching_Settings:
+        """Return matching settings from the panel controls."""
+        return Matching_Settings(
+            ratio_test = self.ratio_spin.value(),
+            matcher    = self.matcher_combo.currentData(),
+        )
+
+    def get_outlier(self) -> Outlier_Settings:
+        """Return outlier rejection settings from the panel controls."""
+        return Outlier_Settings(
+            rejection_method = self.rejection_combo.currentData(),
+            inlier_threshold = self.threshold_spin.value(),
+        )
 
     def get_settings(self) -> Auto_Match_Settings:
         """Return the current panel state as an ``Auto_Match_Settings``."""
         return Auto_Match_Settings(
             algo             = self.algo_combo.currentData(),
             use_manual_prior = self.manual_prior_cb.isChecked(),
-            max_features     = self.max_features_spin.value(),
-            pyramid_level    = self.pyramid_combo.currentData(),
-            clahe            = self.clahe_cb.isChecked(),
-            ratio_test       = self.ratio_spin.value(),
-            matcher          = self.matcher_combo.currentData(),
-            rejection_method = self.rejection_combo.currentData(),
-            inlier_threshold = self.threshold_spin.value(),
-            akaze            = AKAZE_Params(
-                threshold       = self.akaze_threshold_spin.value(),
-                n_octaves       = self.akaze_octaves_spin.value(),
-                n_octave_layers = self.akaze_octave_layers_spin.value(),
-            ),
-            orb              = ORB_Params(
-                scale_factor   = self.orb_scale_factor_spin.value(),
-                n_levels       = self.orb_n_levels_spin.value(),
-                edge_threshold = self.orb_edge_threshold_spin.value(),
-                patch_size     = self.orb_patch_size_spin.value(),
-            ),
+            test_extraction  = self.get_test_extraction(),
+            ref_extraction   = self.get_ref_extraction(),
+            matching         = self.get_matching(),
+            outlier          = self.get_outlier(),
         )
 
     def update_results(self, candidates: int, inliers: int,
-                       coverage: float | None, rmse: float | None):
-        """Populate the results group after a run.
+                       coverage: float | None, rmse: float | None,
+                       candidate_rows: list[tuple[float, float, float, float]] | None = None):
+        """Populate the results panel after a run.
 
         Args:
-            candidates: Total candidate matches before outlier rejection.
-            inliers:    Matches surviving outlier rejection.
-            coverage:   Spatial coverage fraction 0–1, or None if unavailable.
-            rmse:       Residual RMSE in pixels after fitting, or None.
+            candidates:     Total keypoints detected in the test image.
+            inliers:        Matches surviving outlier rejection.
+            coverage:       Spatial coverage fraction 0–1, or None.
+            rmse:           Residual RMSE in pixels after fitting, or None.
+            candidate_rows: Optional list of (px_x, px_y, lon, lat) for each
+                            candidate GCP, populates the candidate table.
         """
-        self._candidates_label.setText(str(candidates))
-        self._inliers_label.setText(str(inliers))
-        self._coverage_label.setText(f"{coverage * 100:.0f}%" if coverage is not None else "—")
-        self._rmse_label.setText(f"{rmse:.2f} px" if rmse is not None else "—")
+        self._results_panel.update_stats(candidates, inliers, coverage, rmse)
+        if candidate_rows is not None:
+            self._results_panel.set_candidates(candidate_rows)
 
     def clear_results(self):
-        """Reset all result labels to the default placeholder."""
-        self._candidates_label.setText("—")
-        self._inliers_label.setText("—")
-        self._coverage_label.setText("—")
-        self._rmse_label.setText("—")
+        """Reset all result labels and clear the candidate table."""
+        self._results_panel.clear()
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p%")
+
+    def set_progress(self, value: int, text: str | None = None):
+        """Update progress bar value and optional text.
+
+        Args:
+            value: Progress percentage 0-100.
+            text: Optional override for progress text (e.g., stage name).
+        """
+        self.progress_bar.setValue(value)
+        if text is not None:
+            self.progress_bar.setFormat(text)
+
+    def set_progress_visible(self, visible: bool):
+        """Show or hide the progress bar."""
+        self.progress_bar.setVisible(visible)
+        if not visible:
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("%p%")
 
     # ------------------------------------------------------------------
     # Internal
@@ -348,6 +568,17 @@ class Auto_Match_Panel(QWidget):
 
     def _on_run_clicked(self):
         self.run_requested.emit(self.get_settings())
+
+    def set_run_button_enabled(self, enabled: bool):
+        """Enable or disable the Run Auto-Match button.
+
+        Called by controller during background execution.
+        """
+        self.run_btn.setEnabled(enabled)
+        if enabled:
+            self.run_btn.setText("Run Auto-Match")
+        else:
+            self.run_btn.setText("Running...")
 
     def _on_algo_changed(self, _index: int):
         """Show only the param group relevant to the selected algorithm."""

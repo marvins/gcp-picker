@@ -28,3 +28,9 @@ Thumbs.db
 .pytest_cache/
 .ruff_cache/
 
+# Test configuration files
+options.test.cfg
+options.toml
+
+# MyST build outputs
+_build
