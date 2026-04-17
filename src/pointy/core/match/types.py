@@ -33,8 +33,11 @@ class Match_Result:
         inlier_mask:      Boolean mask marking which candidates survived
                           outlier rejection.  Same length as candidates.
         n_raw_matches:    Total keypoints detected in the test image.
+        n_ref_keypoints:  Total keypoints detected in the reference image.
         n_candidates:     Matches after ratio test (before outlier rejection).
         n_inliers:        Matches surviving outlier rejection.
+        raw_match_pixels: Nx2 array of test image pixel coords for ratio-test candidates (before RANSAC).
+        raw_match_ref_pixels: Nx2 array of reference image pixel coords for ratio-test candidates.
         homography:       3×3 homography matrix (test→ref), or None if failed.
         elapsed_sec:      Total wall-clock time for the run.
         error:            Non-empty string if the run failed, empty otherwise.
@@ -43,8 +46,11 @@ class Match_Result:
     candidate_geos:   np.ndarray        = field(default_factory=lambda: np.empty((0, 2)))
     inlier_mask:      np.ndarray        = field(default_factory=lambda: np.empty(0, dtype=bool))
     n_raw_matches:    int               = 0
+    n_ref_keypoints:  int               = 0
     n_candidates:     int               = 0
     n_inliers:        int               = 0
+    raw_match_pixels: np.ndarray        = field(default_factory=lambda: np.empty((0, 2)))
+    raw_match_ref_pixels: np.ndarray    = field(default_factory=lambda: np.empty((0, 2)))
     homography:       np.ndarray | None = None
     elapsed_sec:      float             = 0.0
     error:            str               = ''

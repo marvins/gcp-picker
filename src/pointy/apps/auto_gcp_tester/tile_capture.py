@@ -146,15 +146,10 @@ def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom:
     if target_bounds is not None:
         # Calculate required tile grid to cover target bounds
         grid_radius = calculate_tile_grid_radius(x, y, zoom, target_bounds)
-        # Cap grid radius to prevent excessive requests (max 7x7 grid = 49 tiles)
-        max_grid_radius = 3
-        if grid_radius > max_grid_radius:
-            logger.warning(f"Grid radius {grid_radius} exceeds max {max_grid_radius}, capping to prevent excessive tile requests")
-            grid_radius = max_grid_radius
         logger.info(f"Target bounds: {target_bounds}")
         logger.info(f"Using tile grid radius {grid_radius} ({2*grid_radius+1}x{2*grid_radius+1} tiles)")
     else:
-        # Default 3x3 grid
+        # Default 3x3 grid around center
         grid_radius = 1
 
     # Capture tiles in expanding grid around center

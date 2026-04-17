@@ -20,6 +20,7 @@ Configuration management for Auto-GCP Tester.
 import argparse
 import logging
 import sys
+import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -42,7 +43,12 @@ from pointy.core.auto_match import (
     Rejection_Method,
 )
 from pointy.core.gcp_processor import GCP_Processor
-from tmns.geo.coord import Geographic
+from pointy.core.ortho_model_persistence import apply_model_to_projector, load_ortho_model, sidecar_exists
+from tmns.geo.coord import CRS, Geographic
+from tmns.geo.proj import Identity, Transformation_Type
+from tmns.geo.proj.affine import Affine
+from tmns.geo.proj.rpc import RPC
+from tmns.geo.proj.tps import TPS
 
 
 @dataclass
@@ -521,3 +527,70 @@ class Configuration:
                     print(f"WARNING: Failed to extract bounds from sidecar {world_file}: {e}")
 
         return None
+
+    def get_ortho_model_bounds(self, image_path: str, image_shape: tuple[int, int]) -> dict[str, float] | None:
+        """Load Ortho model from sidecar and get full test image geographic bounds.
+
+        This uses the fitted Ortho model (TPS/RPC) to compute the full geographic
+        footprint of the test image via projector.warp_extent(), which provides
+        the actual bounds of the image after transformation.
+
+        Args:
+            image_path: Path to the test image file.
+            image_shape: (height, width) of the test image in pixels.
+
+        Returns:
+            dict[str, float] | None: Bounds as {sw_lat, sw_lon, ne_lat, ne_lon},
+                or None if no ortho model sidecar exists or bounds cannot be computed.
+        """
+        logger = logging.getLogger(__name__)
+
+        if not sidecar_exists(image_path):
+            return None
+
+        try:
+            sidecar = load_ortho_model(image_path)
+            if sidecar is None:
+                return None
+
+            # Create projector based on model type
+            model_type_str = sidecar.metadata.model_type
+            try:
+                model_type = Transformation_Type(model_type_str)
+            except ValueError:
+                logger.warning(f"Unknown model type {model_type_str} in sidecar")
+                return None
+
+            # Import and create appropriate projector
+            if model_type == Transformation_Type.AFFINE:
+                projector = Affine()
+            elif model_type == Transformation_Type.TPS:
+                projector = TPS()
+            elif model_type == Transformation_Type.RPC:
+                projector = RPC()
+            else:
+                logger.warning(f"Unsupported model type {model_type}")
+                return None
+
+            # Apply model data to projector
+            apply_model_to_projector(projector, sidecar.model_data, model_type_str)
+
+            # Get warp extent for full image
+            height, width = image_shape
+            warp_extent = projector.warp_extent(width, height)
+
+            # Convert Warp_Extent to bounds dict
+            bounds = {
+                'sw_lat': warp_extent.min_point.latitude_deg,
+                'sw_lon': warp_extent.min_point.longitude_deg,
+                'ne_lat': warp_extent.max_point.latitude_deg,
+                'ne_lon': warp_extent.max_point.longitude_deg,
+            }
+
+            logger.info(f"Loaded Ortho model ({model_type_str}) and computed bounds: {bounds}")
+            return bounds
+
+        except Exception as e:
+            logger.warning(f"Failed to load Ortho model or compute bounds: {e}")
+            logger.debug(traceback.format_exc())
+            return None

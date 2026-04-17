@@ -486,3 +486,14 @@ in the raw (non-orthorectified) view.  However:
    new threshold settings without re-running feature extraction (which is the slowest step)?
    The run-all-at-once design keeps the UI simple; caching extracted features between runs
    would enable partial re-runs without complicating the UI.
+
+#  Random Idea
+
+I was thinking about an algorithm where we did the following:
+
+1. For both the reference and test image, compute the 2d sobel gradient magnitude (aka edges)
+2. Use a few GCPs to establish a rough order affine (2d homography) between the two images
+3. For the gradients, potentially dilate the images to make them more robust.
+4. Use a genetic algorithm to find the best homography that aligns the gradients.
+
+Because the edge images have more structure, and will respond with lower resolution, this might be a good way to get a good initial guess for the homography.

@@ -148,16 +148,23 @@ class GCP_Controller:
         ref_point  = self._gcp_proc.get_pending_reference_point()
 
         if test_point and ref_point:
-            gcp = self._gcp_proc.create_gcp_from_pending()
-            self._mgr.add_gcp(gcp)
+            try:
+                gcp = self._gcp_proc.create_gcp_from_pending()
+                self._mgr.add_gcp(gcp)
 
-            test_x, test_y = test_point
-            tx, ty = self._gcp_proc.transform_test_coordinates(test_x, test_y)
-            self._test.add_gcp_point(int(tx), int(ty), gcp.id)
-            self._test.image_view.clear_pending_test_point()
-            self._mgr.clear_pending_point()
-            self._status.showMessage(f'GCP {gcp.id} created automatically')
-            self._gcp_proc.clear_pending_points()
+                test_x, test_y = test_point
+                tx, ty = self._gcp_proc.transform_test_coordinates(test_x, test_y)
+                self._test.add_gcp_point(int(tx), int(ty), gcp.id)
+                self._test.image_view.clear_pending_test_point()
+                self._mgr.clear_pending_point()
+                self._status.showMessage(f'GCP {gcp.id} created automatically')
+                self._gcp_proc.clear_pending_points()
+            except RuntimeError as e:
+                QMessageBox.critical(self._parent, 'Elevation Error', str(e))
+                self._status.showMessage('Failed to create GCP: elevation lookup failed')
+                self._gcp_proc.clear_pending_points()
+                self._test.image_view.clear_pending_test_point()
+                self._mgr.clear_pending_point()
 
     # ------------------------------------------------------------------
     # Persistence

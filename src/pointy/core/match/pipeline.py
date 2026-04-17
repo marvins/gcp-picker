@@ -104,9 +104,10 @@ class Auto_Matcher:
             return result
 
         # ── Stage 2: Descriptor Matching + Ratio Test ─────────────────────────
-        good_matches        = self._matcher.match(desc_test, desc_ref)
-        result.n_raw_matches = len(kps_test)
-        result.n_candidates  = len(good_matches)
+        good_matches         = self._matcher.match(desc_test, desc_ref)
+        result.n_raw_matches  = len(kps_test)
+        result.n_ref_keypoints = len(kps_ref)
+        result.n_candidates   = len(good_matches)
         logging.info(f'Auto_Matcher: {len(good_matches)} matches after ratio test')
 
         if len(good_matches) < self.MIN_INLIERS:
@@ -121,6 +122,10 @@ class Auto_Matcher:
         pts_ref_px = np.array(
             [kps_ref[m.trainIdx].pt for m in good_matches], dtype=np.float32
         )
+
+        # Store ratio-test candidate coordinates for visualization
+        result.raw_match_pixels = pts_test
+        result.raw_match_ref_pixels = pts_ref_px
 
         # ── Stage 3: Outlier Rejection ────────────────────────────────────────
         H, inlier_mask    = self._filter.filter(pts_test, pts_ref_px * scale)

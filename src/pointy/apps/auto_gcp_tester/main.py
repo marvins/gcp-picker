@@ -109,6 +109,11 @@ def main() -> int:
         logger.error(f"Failed to load test image: {e}")
         return 1
 
+    # Check for Ortho model sidecar to get full test image bounds
+    ortho_model_bounds = config.get_ortho_model_bounds(config.test_image.path, test_image.shape[:2])
+    if ortho_model_bounds:
+        logger.info(f"Ortho model bounds: {ortho_model_bounds}")
+
     # Load reference imagery
     if config.reference.type == "file":
         logger.info(f"Loading reference image: {config.reference.file_path}")
@@ -161,31 +166,26 @@ def main() -> int:
     if config.reference.type == "leaflet":
         logger.info(f"Capturing reference imagery from {config.reference.service}")
 
-        # Check if test image has ortho sidecar to get bounds for zoom calculation
-        test_bounds = config.check_ortho_sidecar(config.test_image.path)
+        # Prioritize bounds: Ortho model > GCP bounds > GeoTIFF sidecar > fallback
+        target_bounds = ortho_model_bounds or gcp_bounds or config.check_ortho_sidecar(config.test_image.path)
 
         # Calculate appropriate zoom if bounds available
-        if test_bounds:
-            recommended_zoom = calculate_zoom_for_resolution(test_image.shape, config.reference.center['lat'], test_bounds)
-            logger.info(f"Test image bounds detected: {test_bounds}")
+        if target_bounds:
+            recommended_zoom = calculate_zoom_for_resolution(test_image.shape, config.reference.center['lat'], target_bounds)
+            logger.info(f"Bounds detected: {target_bounds}")
             logger.info(f"Recommended zoom level: {recommended_zoom} (config: {config.reference.zoom})")
-            zoom = recommended_zoom
-        elif gcp_bounds:
-            # Use GCP bounds if available
-            recommended_zoom = calculate_zoom_for_resolution(test_image.shape, config.reference.center['lat'], gcp_bounds)
-            logger.info(f"GCP-based zoom level: {recommended_zoom} (config: {config.reference.zoom})")
             zoom = recommended_zoom
         else:
             zoom = config.reference.zoom
 
         try:
-            # Use GCP bounds to expand tile grid for full coverage
+            # Use bounds to expand tile grid for full coverage
             ref_chip, bounds = capture_tiles(
                 service_name=config.reference.service,
                 center_lat=config.reference.center['lat'],
                 center_lon=config.reference.center['lon'],
                 zoom=zoom,
-                target_bounds=gcp_bounds
+                target_bounds=target_bounds
             )
             logger.info(f"Reference chip shape: {ref_chip.shape}, dtype: {ref_chip.dtype}")
 
@@ -235,7 +235,7 @@ def main() -> int:
         logger.info(f"{'Metric':<30} {'Value':>20}")
         logger.info("-"*60)
         logger.info(f"{'Test Image Keypoints':<30} {result.n_raw_matches:>20}")
-        logger.info(f"{'Reference Image Keypoints':<30} {'N/A':>20}")
+        logger.info(f"{'Reference Image Keypoints':<30} {result.n_ref_keypoints:>20}")
         logger.info(f"{'Matches after Ratio Test':<30} {result.n_candidates:>20}")
         logger.info(f"{'Inliers after RANSAC':<30} {result.n_inliers:>20}")
         logger.info(f"{'Manual GCPs Loaded':<30} {len(manual_gcp_rows):>20}")
@@ -246,18 +246,19 @@ def main() -> int:
             # Combine candidate_pixels and candidate_geos into rows
             candidate_rows = list(zip(result.candidate_pixels[:, 0], result.candidate_pixels[:, 1],
                                     result.candidate_geos[:, 0], result.candidate_geos[:, 1]))
-            logger.info("Candidate GCPs:")
-            for px_x, px_y, lon, lat in candidate_rows:
-                logger.info(f"  pixel({px_x:.1f}, {px_y:.1f}) -> geo({lon:.6f}, {lat:.6f})")
-
-            # Create visualization
-            temp_dir = Path('temp')
-            try:
-                visualize_results(test_image, ref_chip, candidate_rows, temp_dir, manual_gcp_rows, bounds)
-                logger.info(f"Visualization results saved to {temp_dir.absolute()}")
-            except Exception as e:
-                logger.warning(f"Failed to create visualization: {e}")
-
+            logger.info(f"Visualizing {len(candidate_rows)} candidate GCPs...")
+            visualize_results(
+                test_image,
+                ref_chip,
+                candidate_rows,
+                Path('temp'),
+                manual_gcps=manual_gcp_rows,
+                bounds=bounds,
+                inlier_mask=result.inlier_mask,
+                raw_match_pixels=result.raw_match_pixels,
+                raw_match_ref_pixels=result.raw_match_ref_pixels
+            )
+            logger.info(f"Visualization results saved to {Path('temp').absolute()}")
     except Exception as e:
         logger.error(f"Auto-match pipeline failed: {e}")
         import traceback

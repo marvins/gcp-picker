@@ -193,9 +193,10 @@ class GCP_Processor:
             elev = get_elevation(geographic)
             if elev is not None:
                 geographic.altitude_m = elev
-        except Exception:
-            # Elevation lookup failed, continue without elevation
-            pass
+            else:
+                raise RuntimeError("Elevation lookup returned None")
+        except Exception as e:
+            raise RuntimeError(f"Elevation lookup failed for coordinates ({lon:.6f}, {lat:.6f}): {e}")
 
         gcp = GCP(
             id=self.next_gcp_id,
