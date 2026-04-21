@@ -34,3 +34,4 @@ options.toml
 
 # MyST build outputs
 _build
+temp

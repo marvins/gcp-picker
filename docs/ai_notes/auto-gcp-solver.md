@@ -11,9 +11,27 @@ Manual GCPs remain the ground truth for validation and override, but the auto-so
 the heavy lifting for initial registration and for large collections where manual placement
 does not scale.
 
----
+## Algorithm Selection
 
-## UI Design
+The solver supports two complementary approaches:
+
+### ALGO1: Keypoint-Based Matching (Classical)
+- **Method**: Feature extraction (AKAZE/ORB) → descriptor matching → outlier rejection
+- **Strengths**: Well-established, works well when images have good texture/contrast
+- **Weaknesses**: Struggles with cross-modal (IR ↔ visible) and low-contrast imagery
+- **Use Case**: Default for visible-spectrum pairs with good texture
+
+### ALGO2: Edge-Based Genetic Algorithm Alignment
+- **Method**: Sobel edge detection → differential evolution optimization → synthetic GCP extraction
+- **Strengths**: More robust to radiometric domain shifts, works with lower resolution
+- **Weaknesses**: Requires more GCPs for RPC fitting, slower due to GA optimization
+- **Use Case**: IR ↔ visible, low-contrast, or when ALGO1 fails
+
+Both algorithms can be selected via the `Auto_Algo` enum in the configuration. The system
+automatically combines manual GCPs (if available) with algorithm-generated GCPs to solve
+the appropriate projector model (Affine or RPC) based on the total GCP count.
+
+---
 
 ### Panel: "Auto Match"
 A dedicated **"Auto Match"** tab is added to the sidebar, separate from the "Ortho" tab.
@@ -29,8 +47,17 @@ the auto-generated points before fitting.
 ```
 ┌─ Auto Match ──────────────────────────────────────────┐
 │  ── Algorithm ────────────────────────────────────     │
-│  Method           [ AKAZE ▼ ]                         │
+│  Strategy         [ ALGO1 ▼ ]  (ALGO1/ALGO2)         │
 │  ☑ Use Manual GCPs as Prior                           │
+│                                                       │
+│  ── ALGO1: Keypoint-Based ───────────────────────     │
+│  Method           [ AKAZE ▼ ]  (AKAZE/ORB)           │
+│                                                       │
+│  ── ALGO2: Edge-Based GA ───────────────────────     │
+│  Edge Dilation   [ 3 ]                                │
+│  GA Popsize      [ 15 ]                               │
+│  GA Maxiter      [ 200 ]                              │
+│                   (shown only when ALGO2 selected)     │
 │                                                       │
 │  ── Feature Extraction ──────────────────────────     │
 │  Max Features     [ 2000      ]                       │
@@ -124,9 +151,11 @@ using the `source` field already present on the `GCP` dataclass.
 
 ## Pipeline Stages
 
+### ALGO1: Keypoint-Based Pipeline
+
 ```
 Test Image  ──┐
-              ├──► 1. Feature Extraction
+              ├──► 1. Feature Extraction (AKAZE/ORB)
 Reference   ──┘
                          │
                          ▼
@@ -139,16 +168,108 @@ Reference   ──┘
               4. Candidate GCP Set  (filtered match pairs)
                          │
                          ▼
-              5. Model Search  (GA / grid search / BO)
+              5. Model Fitting  (Affine/RPC from GCPs)
                          │
                          ▼
-              6. Model Validation  (residuals, coverage, roundtrip)
+              6. Result  →  Projector + optional manual review
+```
+
+### ALGO2: Edge-Based GA Pipeline
+
+```
+Test Image  ──┐
+              ├──► 1. Sobel Edge Detection
+Reference   ──┘
+                         │
+                         ▼
+              2. Differential Evolution Optimization
+                         │
+                         ▼
+              3. Extract Synthetic GCPs (grid pattern)
+                         │
+                         ▼
+              4. Combine with Manual GCPs (if available)
+                         │
+                         ▼
+              5. Model Fitting (Affine/RPC based on GCP count)
+                         │
+                         ▼
+              6. GeoTiff Generation (optional)
                          │
                          ▼
               7. Result  →  Projector + optional manual review
 ```
 
 ---
+
+## ALGO2: Edge-Based GA Details
+
+### Stage 1 — Sobel Edge Detection
+
+Both test and reference images are converted to edge maps using Sobel gradient magnitude:
+- Optional dilation to thicken edges for robustness
+- Otsu thresholding to binarize edges
+- Normalized cross-correlation (NCC) used as fitness metric
+
+### Stage 2 — Differential Evolution Optimization
+
+A genetic algorithm optimizes the parameters of the ortho model (Affine, TPS, or RPC):
+- **Parameters**: Model-specific parameters extracted via `to_params()` (e.g., 6 for Affine, 16 for RPC)
+- **Bounds**: Model-specific bounds (±50 pixels for translation, ±20% for scale/shear)
+- **Fitness**: NCC between transformed test edges and reference edges
+- **Solver**: `scipy.optimize.differential_evolution`
+- **Settings**: popsize=15, maxiter=200, mutation=(0.5,1.0), recombination=0.7
+
+### Stage 3 — Synthetic GCP Extraction
+
+After GA converges, GCPs are extracted using a grid pattern:
+- **Grid**: 4x4 points across the test image (16 synthetic GCPs)
+- **Transform**: Grid points transformed using the converged ortho model
+- **Geo mapping**: Transformed points mapped to geographic coordinates via reference geo transform
+- **Purpose**: Provides well-distributed points for model fitting
+
+### Stage 4 — Manual GCP Combination
+
+Manual GCPs (if available) are combined with synthetic GCPs:
+- Manual GCPs take priority (ground truth)
+- Combined set used for model fitting
+- Improves model accuracy when manual GCPs are available
+
+### Stage 5 — Model Fitting
+
+Based on total GCP count, the appropriate model is solved:
+- **RPC**: ≥40 GCPs (full version) or ≥9 GCPs (simplified 9-term polynomial)
+- **Affine**: ≥3 GCPs (minimum for 3-DOF affine)
+- **Model selection**: Automatic based on GCP availability
+
+### Stage 6 — GeoTiff Generation (Optional)
+
+If a projector model is solved, a georectified GeoTiff can be generated:
+- Uses `projector.warp_extent()` to get geographic bounds
+- Warps image using `cv2.remap()` with projector's remap coordinates
+- Saves as GeoTIFF with proper CRS and transform metadata
+
+### GCP Extraction Strategy Discussion
+
+**Current Approach (Grid Pattern):**
+- Extracts GCPs from a regular 4x4 grid
+- **Pros**: Guaranteed spatial distribution, deterministic, simple
+- **Cons**: May not align with actual image features
+
+**Alternative (Edge-Based GCPs):**
+- Extract GCPs from actual edge features (corners, intersections, strong edge points)
+- **Pros**: More likely to be accurate since they correspond to real features
+- **Cons**: Edges can be noisy, may not be well-distributed, more complex
+
+**Recommendation:**
+- Start with grid pattern (current implementation) for reliability
+- Consider hybrid approach: use edge features where available, fall back to grid
+- Edge features could be extracted using Harris corner detection or edge intersection points
+- This would be a future enhancement to improve GCP quality
+
+---
+
+## ALGO1: Keypoint-Based Details
 
 ## Stage 1 — Feature Extraction
 
@@ -486,14 +607,3 @@ in the raw (non-orthorectified) view.  However:
    new threshold settings without re-running feature extraction (which is the slowest step)?
    The run-all-at-once design keeps the UI simple; caching extracted features between runs
    would enable partial re-runs without complicating the UI.
-
-#  Random Idea
-
-I was thinking about an algorithm where we did the following:
-
-1. For both the reference and test image, compute the 2d sobel gradient magnitude (aka edges)
-2. Use a few GCPs to establish a rough order affine (2d homography) between the two images
-3. For the gradients, potentially dilate the images to make them more robust.
-4. Use a genetic algorithm to find the best homography that aligns the gradients.
-
-Because the edge images have more structure, and will respond with lower resolution, this might be a good way to get a good initial guess for the homography.

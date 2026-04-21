@@ -31,7 +31,8 @@ from pointy.widgets.about_dialog import show_about_dialog
 from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
 from pointy.core.gcp_processor import GCP_Processor
 from pointy.core.collection_manager import Collection_Manager
-from pointy.controllers.auto_match_controller import Auto_Match_Controller
+from pointy.controllers.auto_gcp_solver_controller import Auto_GCP_Solver_Controller
+from pointy.controllers.auto_model_solver_controller import Auto_Model_Solver_Controller
 from pointy.controllers.gcp_controller import GCP_Controller
 from pointy.controllers.image_controller import Image_Controller
 from pointy.controllers.ortho_controller import Ortho_Controller
@@ -109,11 +110,17 @@ class Main_Window(QMainWindow):
                                             ortho_controller   = self.ortho_ctrl,
                                             parent_widget      = self )
 
-        self.auto_match_ctrl = Auto_Match_Controller( gcp_processor    = self.gcp_processor,
-                                                      test_viewer      = self.test_viewer,
-                                                      reference_viewer = self.reference_viewer,
-                                                      sidebar          = self.sidebar,
-                                                      status_bar       = self.status_bar )
+        self.auto_gcp_solver_ctrl = Auto_GCP_Solver_Controller( gcp_processor    = self.gcp_processor,
+                                                           test_viewer      = self.test_viewer,
+                                                           reference_viewer = self.reference_viewer,
+                                                           sidebar          = self.sidebar,
+                                                           status_bar       = self.status_bar )
+
+        self.auto_model_solver_ctrl = Auto_Model_Solver_Controller( gcp_processor    = self.gcp_processor,
+                                                                   test_viewer      = self.test_viewer,
+                                                                   reference_viewer = self.reference_viewer,
+                                                                   sidebar          = self.sidebar,
+                                                                   status_bar       = self.status_bar )
 
         # Connect signals
         self.connect_signals()

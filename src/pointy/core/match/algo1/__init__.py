@@ -10,23 +10,16 @@
 #
 #    File:    __init__.py
 #    Author:  Marvin Smith
-#    Date:    04/12/2026
+#    Date:    04/17/2026
 #
 """
-pointy.core.match — automatic GCP matching pipeline.
+pointy.core.match.algo1 — Keypoint-based automatic GCP matching (ALGO1).
+
+This module contains the keypoint-based matching pipeline using AKAZE or ORB
+descriptors with kNN matching, Lowe ratio test, and RANSAC outlier rejection.
 
 Public API
 ----------
-GCP_Solver_Pipeline — feature-based GCP solving pipeline
-Edge_Aligner — edge-based model fitting using Sobel edges and genetic algorithms
-Match_Result        — output dataclass from pipeline runs
-
-Algorithms
-----------
-Match_Algo          — keypoint algorithm selector (AKAZE, ORB) for feature matching
-
-ALGO1 (Keypoint-based)
-----------------------
 Feature_Extractor   — ABC for detector/descriptor wrappers
 AKAZE_Extractor     — cv2.AKAZE_create() wrapper
 ORB_Extractor       — cv2.ORB_create() wrapper
@@ -36,28 +29,25 @@ Outlier_Filter      — ABC for geometric outlier filters
 RANSAC_Filter       — cv2.findHomography RANSAC
 MAGSAC_Filter       — cv2.findHomography USAC_MAGSAC
 make_outlier_filter — factory driven by Rejection_Method enum
-
-Shared Components
------------------
-GCP_Candidate_Set   — spatial-grid candidate sampler
+Pipeline            — GCP_Solver_Pipeline.run() implementation for feature matching
 """
 
-from pointy.core.auto_match import Match_Algo
-from pointy.core.match.types import Match_Result
-from pointy.core.match.extractor import (Feature_Extractor, AKAZE_Extractor,
-                                          ORB_Extractor, make_extractor)
+from pointy.core.match.extractor import (
+    Feature_Extractor,
+    AKAZE_Extractor,
+    ORB_Extractor,
+    make_extractor,
+)
 from pointy.core.match.matcher import Feature_Matcher
-from pointy.core.match.outlier_filter import (Outlier_Filter, RANSAC_Filter,
-                                               MAGSAC_Filter, make_outlier_filter)
-from pointy.core.match.candidate_set import GCP_Candidate_Set
-from pointy.core.match.gcp_solver_pipeline import GCP_Solver_Pipeline
-from pointy.core.match.edge_alignment import Edge_Aligner
+from pointy.core.match.outlier_filter import (
+    Outlier_Filter,
+    RANSAC_Filter,
+    MAGSAC_Filter,
+    make_outlier_filter,
+)
+from pointy.core.match.gcp_solver_pipeline import GCP_Solver_Pipeline as _Pipeline
 
 __all__ = [
-    'GCP_Solver_Pipeline',
-    'Edge_Aligner',
-    'Match_Result',
-    'Match_Algo',
     'Feature_Extractor',
     'AKAZE_Extractor',
     'ORB_Extractor',
@@ -67,5 +57,4 @@ __all__ = [
     'RANSAC_Filter',
     'MAGSAC_Filter',
     'make_outlier_filter',
-    'GCP_Candidate_Set',
 ]

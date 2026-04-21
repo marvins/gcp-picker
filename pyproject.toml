@@ -82,8 +82,9 @@ Repository = "https://github.com/marvins/gcp-picker.git"
 
 [project.scripts]
 pointy-mcpointface = "pointy.main:main"
-pointy-model-tester = "pointy.apps.model_tester.main:main"
-pointy-auto-gcp-tester = "pointy.apps.auto_gcp_tester.main:main"
+pointy-ortho-model-tester = "pointy.apps.ortho_model_tester.main:main"
+pointy-auto-gcp-solver = "pointy.apps.auto_gcp_solver.main:main"
+pointy-auto-model-solver = "pointy.apps.auto_model_solver.main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

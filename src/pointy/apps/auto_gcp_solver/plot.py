@@ -26,7 +26,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def visualize_results(test_image: np.ndarray, ref_image: np.ndarray, candidate_rows: list[tuple[float, float, float, float]], output_dir: Path, manual_gcps: list[tuple[float, float, float, float]] | None = None, bounds: dict[str, float] | None = None, inlier_mask: np.ndarray | None = None, raw_match_pixels: np.ndarray | None = None, raw_match_ref_pixels: np.ndarray | None = None) -> None:
+def visualize_results(test_image: np.ndarray, ref_image: np.ndarray, candidate_rows: list[tuple[float, float, float, float]], output_dir: Path, manual_gcps: list | None = None, bounds: dict[str, float] | None = None, inlier_mask: np.ndarray | None = None, raw_match_pixels: np.ndarray | None = None, raw_match_ref_pixels: np.ndarray | None = None) -> None:
     """Visualize GCPs on test and reference images using Plotly.
 
     Args:
@@ -34,7 +34,7 @@ def visualize_results(test_image: np.ndarray, ref_image: np.ndarray, candidate_r
         ref_image: Reference image array.
         candidate_rows: List of (px_x, px_y, lon, lat) tuples for candidate GCPs.
         output_dir: Directory to save output images.
-        manual_gcps: Optional list of (px_x, px_y, lon, lat) tuples for manual GCPs.
+        manual_gcps: Optional list of GCP objects for manual GCPs.
         bounds: Optional geographic bounds dict with sw_lat, sw_lon, ne_lat, ne_lon for geo-to-pixel transform.
         inlier_mask: Optional boolean array marking which candidates are RANSAC inliers.
         raw_match_pixels: Optional Nx2 array of test image pixel coords for raw kNN matches (before ratio test).
@@ -99,7 +99,16 @@ def visualize_results(test_image: np.ndarray, ref_image: np.ndarray, candidate_r
     logger.info(f"Downsampled reference image by {ref_scale}x to {ref_norm.shape}")
 
     # Scale GCP coordinates accordingly
-    manual_gcps_scaled = [(px_x / test_scale, px_y / test_scale, lon, lat) for px_x, px_y, lon, lat in manual_gcps] if manual_gcps else None
+    # Convert GCP objects to tuples if needed
+    if manual_gcps and len(manual_gcps) > 0:
+        if hasattr(manual_gcps[0], 'test_pixel'):
+            # GCP objects
+            manual_gcps_scaled = [(gcp.test_pixel.x_px / test_scale, gcp.test_pixel.y_px / test_scale, gcp.geographic.longitude_deg, gcp.geographic.latitude_deg) for gcp in manual_gcps]
+        else:
+            # Already tuples
+            manual_gcps_scaled = [(px_x / test_scale, px_y / test_scale, lon, lat) for px_x, px_y, lon, lat in manual_gcps]
+    else:
+        manual_gcps_scaled = None
     candidate_rows_scaled = [(px_x / test_scale, px_y / test_scale, lon, lat) for px_x, px_y, lon, lat in candidate_rows]
 
     # Geo-to-pixel transformation for reference image (uses downsampled resolution)

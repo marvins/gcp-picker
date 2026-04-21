@@ -199,17 +199,19 @@ def make_extractor(settings: Auto_Match_Settings,
     """Factory: return a ``Feature_Extractor`` for the given algo and extraction settings.
 
     Args:
-        settings:   Top-level ``Auto_Match_Settings`` (provides the algo enum).
+        settings:   Top-level ``Auto_Match_Settings`` (provides algo1.keypoint_algo).
         extraction: Per-source ``Feature_Extraction_Settings`` (test or ref).
 
     Returns:
         Concrete ``Feature_Extractor`` instance.
 
     Raises:
-        ValueError: If ``settings.algo`` is not a supported ``Match_Algo``.
+        ValueError: If ``settings.algo`` is not ALGO1 or algo1.keypoint_algo is unsupported.
     """
-    if settings.algo == Match_Algo.AKAZE:
+    if settings.feature_settings is None:
+        raise ValueError('Feature extractors require feature_settings')
+    if settings.feature_settings.keypoint_algo == Match_Algo.AKAZE:
         return AKAZE_Extractor(extraction)
-    if settings.algo == Match_Algo.ORB:
+    if settings.feature_settings.keypoint_algo == Match_Algo.ORB:
         return ORB_Extractor(extraction)
-    raise ValueError(f'Unsupported algorithm: {settings.algo}')
+    raise ValueError(f'Unsupported keypoint algorithm: {settings.feature_settings.keypoint_algo}')

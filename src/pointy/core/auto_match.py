@@ -19,10 +19,10 @@ Auto-match types and settings for the automatic GCP picker pipeline.
 # Python Standard Libraries
 from dataclasses import dataclass, field
 from enum import Enum
-
+from typing import Tuple, Type
 
 class Match_Algo(Enum):
-    """Feature extraction algorithm for automatic GCP matching.
+    """Feature extraction algorithm for automatic GCP matching (ALGO1 only).
 
     Classical algorithms only at this stage.  Deep-learning variants
     (SuperPoint, LightGlue) are reserved for Phase 4 and require an
@@ -115,9 +115,9 @@ class Feature_Extraction_Settings:
     akaze:         AKAZE_Params = field(default_factory=AKAZE_Params)
     orb:           ORB_Params   = field(default_factory=ORB_Params)
 
-    def to_log_string(self, algo: 'Match_Algo') -> str:
+    def to_log_string(self, keypoint_algo: 'Match_Algo') -> str:
         lines = [f'max_features={self.max_features}, pyramid={self.pyramid_level}, clahe={self.clahe}']
-        if algo == Match_Algo.AKAZE:
+        if keypoint_algo == Match_Algo.AKAZE:
             p = self.akaze
             lines.append(f'akaze(threshold={p.threshold}, octaves={p.n_octaves}, layers={p.n_octave_layers})')
         else:
@@ -157,39 +157,104 @@ class Outlier_Settings:
 
 
 @dataclass
-class Auto_Match_Settings:
-    """Top-level settings composing all pipeline stage configurations.
+class Algo1_Settings:
+    """Settings for the keypoint-based ALGO1 pipeline.
 
     Attributes:
-        algo:            Feature extraction algorithm (shared by both extractors).
-        use_manual_prior: Seed footprint and spatial filter from existing manual GCPs.
-        test_extraction: Extraction settings for the test image.
-        ref_extraction:  Extraction settings for the reference chip.  Defaults differ
-                         from test: pyramid=0 (chip is already display-res), clahe=False.
-        matching:        Stage 2 matching settings.
-        outlier:         Stage 3 outlier rejection settings.
+        keypoint_algo:    Feature extractor selection (AKAZE or ORB).
+        test_extraction:  Feature extraction settings for the test image.
+        ref_extraction:   Feature extraction settings for the reference chip.
+        matching:         Descriptor matching settings.
+        outlier:          Geometric outlier rejection settings.
     """
-    algo:             Match_Algo                = Match_Algo.AKAZE
-    use_manual_prior: bool                      = True
-    test_extraction:  Feature_Extraction_Settings = field(
+    keypoint_algo:   Match_Algo                = Match_Algo.AKAZE
+    test_extraction: Feature_Extraction_Settings = field(
         default_factory=lambda: Feature_Extraction_Settings(
-            max_features=2000, pyramid_level=2, clahe=True
+            max_features=2000, pyramid_level=0, clahe=True
         )
     )
-    ref_extraction:   Feature_Extraction_Settings = field(
+    ref_extraction:  Feature_Extraction_Settings = field(
         default_factory=lambda: Feature_Extraction_Settings(
             max_features=2000, pyramid_level=0, clahe=False
         )
     )
-    matching:         Matching_Settings         = field(default_factory=Matching_Settings)
-    outlier:          Outlier_Settings          = field(default_factory=Outlier_Settings)
+    matching:        Matching_Settings         = field(default_factory=Matching_Settings)
+    outlier:         Outlier_Settings          = field(default_factory=Outlier_Settings)
 
     def to_log_string(self) -> str:
-        """Return a compact human-readable summary of all settings."""
+        """Return a compact human-readable summary of ALGO1 settings."""
         return (
-            f'algo={self.algo.value.upper()}, manual_prior={self.use_manual_prior} | '
-            f'test[{self.test_extraction.to_log_string(self.algo)}] | '
-            f'ref[{self.ref_extraction.to_log_string(self.algo)}] | '
+            f'keypoint={self.keypoint_algo.value.upper()} | '
+            f'test[{self.test_extraction.to_log_string(self.keypoint_algo)}] | '
+            f'ref[{self.ref_extraction.to_log_string(self.keypoint_algo)}] | '
             f'{self.matching.to_log_string()} | '
             f'{self.outlier.to_log_string()}'
         )
+
+
+@dataclass
+class Debug_Settings:
+    """Debug settings for saving intermediate results.
+
+    Attributes:
+        save_sobel_images:    Whether to save Sobel edge images to disk.
+        output_directory:     Directory path for debug output files.
+        save_intermediate_steps: Save additional intermediate processing steps.
+    """
+    save_sobel_images:      bool   = False
+    output_directory:       str    = "temp/debug"
+    save_intermediate_steps: bool   = False
+
+
+@dataclass
+class Edge_Alignment_Settings:
+    """Settings for the edge-based GA pipeline.
+
+    Attributes:
+        edge_dilation:    Dilation kernel size for edge images (0 = no dilation).
+        ga_popsize:       Population size for differential evolution.
+        ga_maxiter:       Maximum iterations for differential evolution.
+        ga_mutation:      Mutation factor tuple (min, max) for DE.
+        ga_recombination: Recombination/crossover probability for DE.
+        search_bounds_px: Search bounds in pixels for transform parameters.
+        debug:            Debug settings for saving intermediate results.
+    """
+    edge_dilation:    int           = 3
+    ga_popsize:       int           = 15
+    ga_maxiter:       int           = 200
+    ga_mutation:      Tuple[float, float] = (0.5, 1.0)
+    ga_recombination: float         = 0.7
+    search_bounds_px: float         = 50.0  # Prior ±50px search range
+    debug:            Debug_Settings = field(default_factory=Debug_Settings)
+
+    def to_log_string(self) -> str:
+        """Return a compact human-readable summary of edge alignment settings."""
+        return (
+            f'edge_dilation={self.edge_dilation}px, '
+            f'GA(popsize={self.ga_popsize}, maxiter={self.ga_maxiter}, '
+            f'mutation={self.ga_mutation}, recombination={self.ga_recombination}) | '
+            f'search_bounds=±{self.search_bounds_px}px'
+        )
+
+
+@dataclass
+class Auto_Match_Settings:
+    """Top-level settings composing all pipeline stage configurations.
+
+    Attributes:
+        feature_settings: Settings for feature-based matching (AKAZE/ORB).
+        edge_settings:    Settings for edge-based alignment (Sobel + GA).
+        use_manual_prior: Seed footprint and spatial filter from existing manual GCPs.
+    """
+    feature_settings: Algo1_Settings | None = field(default_factory=Algo1_Settings)
+    edge_settings:    Edge_Alignment_Settings | None = field(default_factory=Edge_Alignment_Settings)
+    use_manual_prior: bool          = True
+
+    def to_log_string(self) -> str:
+        """Return a compact human-readable summary of all settings."""
+        base = f'manual_prior={self.use_manual_prior}'
+        if self.feature_settings is not None:
+            return f'{base} | Feature: {self.feature_settings.to_log_string()}'
+        elif self.edge_settings is not None:
+            return f'{base} | Edge: {self.edge_settings.to_log_string()}'
+        return base

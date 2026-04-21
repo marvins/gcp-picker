@@ -115,7 +115,9 @@ class Ortho_Controller:
                         output_crs = CRS.utm_zone(zone, hemisphere)
 
                     gcp_ids = [g.id for g in gcps]
-                    save_ortho_model(image_path, model_type, projector, extent, output_crs, gcp_ids)
+                    img_shape = self._test.get_image_data().shape
+                    save_ortho_model(image_path, model_type, projector, extent, output_crs, gcp_ids,
+                                     image_size=(img_shape[1], img_shape[0]))
                     tools_panel.set_sidecar_status(True, model_type.value, replaced=True)
                     self._status.showMessage(f'{model_name} fit complete — RMSE: {residuals_info["rmse"]:.3f} px (saved)')
                 except Exception as e:
@@ -250,7 +252,7 @@ class Ortho_Controller:
             return
 
         try:
-            sidecar = load_ortho_model(image_path)
+            sidecar = load_ortho_model(Path(image_path))
             if sidecar is None:
                 tools_panel.set_sidecar_status(False)
                 return

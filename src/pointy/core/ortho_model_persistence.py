@@ -28,7 +28,6 @@ import numpy as np
 from tmns.geo.coord import CRS, Geographic
 from tmns.geo.proj import Transformation_Type, Warp_Extent
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +68,8 @@ def save_ortho_model(
     projector,
     warp_extent: Warp_Extent,
     output_crs: CRS,
-    gcp_ids: list[int]
+    gcp_ids: list[int],
+    image_size: tuple[int, int],
 ) -> Path:
     """Save ortho model data to a sidecar file.
 
@@ -80,20 +80,24 @@ def save_ortho_model(
         warp_extent: Geographic extent of the warped output.
         output_crs: Output coordinate reference system.
         gcp_ids: List of GCP IDs used for fitting.
+        image_size: (width, height) of the source image.
 
     Returns:
         Path to the saved sidecar file.
     """
     sidecar_path = get_sidecar_path(image_path)
 
-    # Build metadata
-    metadata = Ortho_Model_Metadata(
-        model_type=model_type.value,
-        fitted_timestamp=datetime.utcnow().isoformat(),
-        gcp_ids=gcp_ids,
-        image_path=str(image_path),
-        output_crs=str(output_crs)
-    )
+    # Store image size on the projector before serializing
+    projector._image_size = image_size
+
+    # Build metadata dict
+    metadata = {
+        'model_type': model_type.value,
+        'fitted_timestamp': datetime.utcnow().isoformat(),
+        'gcp_ids': gcp_ids,
+        'image_path': str(image_path),
+        'output_crs': str(output_crs)
+    }
 
     # Build warp extent dict
     warp_extent_dict = warp_extent.to_dict()
@@ -101,16 +105,9 @@ def save_ortho_model(
     # Build model-specific data using projector's serialization method
     model_data = projector.serialize_model_data()
 
-    # Build complete sidecar
-    sidecar = Ortho_Model_Sidecar(
-        metadata=metadata,
-        warp_extent=warp_extent_dict,
-        model_data=model_data
-    )
-
-    # Convert to dict for JSON serialization
+    # Build complete sidecar dict
     sidecar_dict = {
-        'metadata': asdict(metadata),
+        'metadata': metadata,
         'warp_extent': warp_extent_dict,
         'model_data': model_data
     }
@@ -124,8 +121,8 @@ def save_ortho_model(
     return sidecar_path
 
 
-def load_ortho_model(image_path: str) -> Ortho_Model_Sidecar | None:
-    """Load ortho model data from a sidecar file.
+def load_ortho_model(image_path: Path) -> Ortho_Model_Sidecar | None:
+    """Load ortho model from a sidecar file.
 
     Args:
         image_path: Path to the source image.
@@ -147,12 +144,9 @@ def load_ortho_model(image_path: str) -> Ortho_Model_Sidecar | None:
         warp_extent_dict = sidecar_dict['warp_extent']
         model_data = sidecar_dict['model_data']
 
-        # Reconstruct warp extent
-        warp_extent = Warp_Extent.from_dict(warp_extent_dict)
-
         sidecar = Ortho_Model_Sidecar(
             metadata=metadata,
-            warp_extent=warp_extent_dict,  # Keep as dict for now
+            warp_extent=warp_extent_dict,
             model_data=model_data
         )
 

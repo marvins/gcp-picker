@@ -18,6 +18,7 @@ Output types for the automatic GCP matching pipeline.
 
 # Python Standard Libraries
 from dataclasses import dataclass, field
+from typing import Any
 
 # Third-Party Libraries
 import numpy as np
@@ -25,7 +26,7 @@ import numpy as np
 
 @dataclass
 class Match_Result:
-    """Results returned by ``Auto_Matcher.run()``.
+    """Results returned by ``GCP_Solver_Pipeline.run()`` or ``Edge_Aligner.align()``.
 
     Attributes:
         candidate_pixels: Nx2 array of pixel coords in the test image.
@@ -54,6 +55,15 @@ class Match_Result:
     homography:       np.ndarray | None = None
     elapsed_sec:      float             = 0.0
     error:            str               = ''
+
+    # Model refinement attributes
+    refined_model:    Any               = None  # The refined projector model
+    solver_iterations: int              = 0    # Number of solver iterations
+    solver_converged: bool              = False  # Whether solver converged
+    solver_fitness:  float             = 0.0   # Final fitness score
+    coverage_percent: float             = 0.0   # Coverage percentage
+    rmse:            float             = 0.0   # Root mean square error
+    error_message:   str               = ''   # Detailed error message
 
     @property
     def success(self) -> bool:

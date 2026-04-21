@@ -109,7 +109,7 @@ class MAGSAC_Filter(Outlier_Filter):
 
 
 def make_outlier_filter(settings: Auto_Match_Settings) -> Outlier_Filter:
-    """Factory: return the correct ``Outlier_Filter`` for ``settings.rejection_method``.
+    """Factory: return the correct ``Outlier_Filter`` for the current algo.
 
     Args:
         settings: Current ``Auto_Match_Settings`` from the panel.
@@ -118,10 +118,11 @@ def make_outlier_filter(settings: Auto_Match_Settings) -> Outlier_Filter:
         Concrete ``Outlier_Filter`` instance.
 
     Raises:
-        ValueError: If ``settings.rejection_method`` is not supported.
+        ValueError: If ``feature_settings.rejection_method`` is not supported.
     """
-    if settings.outlier.rejection_method == Rejection_Method.RANSAC:
-        return RANSAC_Filter(settings.outlier.inlier_threshold)
-    if settings.outlier.rejection_method == Rejection_Method.MAGSAC:
-        return MAGSAC_Filter(settings.outlier.inlier_threshold)
-    raise ValueError(f'Unsupported rejection method: {settings.outlier.rejection_method}')
+    outlier = settings.feature_settings.outlier
+    if outlier.rejection_method == Rejection_Method.RANSAC:
+        return RANSAC_Filter(outlier.inlier_threshold)
+    if outlier.rejection_method == Rejection_Method.MAGSAC:
+        return MAGSAC_Filter(outlier.inlier_threshold)
+    raise ValueError(f'Unsupported rejection method: {outlier.rejection_method}')

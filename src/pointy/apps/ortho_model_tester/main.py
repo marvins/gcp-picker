@@ -35,6 +35,7 @@ from rasterio.crs import CRS as Rasterio_CRS
 # Project Libraries
 from pointy.core.collection_manager import Collection_Manager, Collection_Info
 from pointy.core.gcp_processor import GCP_Processor
+from pointy.core.ortho_model_persistence import save_ortho_model
 from pointy.core.transformation import fit_transformation_model, warp_image
 from tmns.geo.coord import Geographic, Pixel
 from tmns.geo.coord.crs import CRS
@@ -62,11 +63,20 @@ def load_collection(collection_path: str) -> tuple[Collection_Manager, Collectio
     return coll_mgr, coll_mgr.current_collection
 
 
-def load_gcps(gcp_file: str, gcp_proc: GCP_Processor) -> int:
+def find_gcp_file(image_path: Path) -> Path | None:
+    """Find a GCP sidecar file for the given image.
+
+    Looks for <image_path>.gcps.json alongside the image.
+    """
+    gcp_path = image_path.parent / (image_path.name + '.gcps.json')
+    return gcp_path if gcp_path.exists() else None
+
+
+def load_gcps(gcp_file: Path, gcp_proc: GCP_Processor) -> int:
     """Load GCPs from a JSON file."""
-    if not Path(gcp_file).exists():
+    if not gcp_file.exists():
         raise FileNotFoundError(f'GCP file not found: {gcp_file}')
-    return gcp_proc.load_gcps(gcp_file)
+    return gcp_proc.load_gcps(str(gcp_file))
 
 
 def check_gcp_count(gcp_count: int, model_type: Transformation_Type) -> bool:
@@ -223,6 +233,11 @@ def main():
         help='Ground sample distance in meters (UTM) or degrees (WGS84). If provided, computes output size from extent.'
     )
     parser.add_argument(
+        '--save-model',
+        action='store_true',
+        help='Save fitted model as ortho sidecar (<image>.ortho.json)'
+    )
+    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help='Enable verbose logging'
@@ -246,8 +261,14 @@ def main():
 
         # Load GCPs
         gcp_proc = GCP_Processor()
-        logger.info(f'Loading GCPs from: {collection.gcp_file}')
-        gcp_count = load_gcps(collection.gcp_file, gcp_proc)
+        gcp_file = find_gcp_file(Path(image_path))
+        if gcp_file is None:
+            raise FileNotFoundError(
+                f'No GCP sidecar found for: {Path(image_path).name}. '
+                f'Expected: {Path(image_path).name}.gcps.json'
+            )
+        logger.info(f'Loading GCPs from: {gcp_file}')
+        gcp_count = load_gcps(gcp_file, gcp_proc)
         logger.info(f'Loaded {gcp_count} GCPs')
 
         # Check model type
@@ -262,6 +283,25 @@ def main():
 
         # Print model information
         print_model_info(projector, gcp_proc)
+
+        # Save ortho model sidecar if requested
+        if args.save_model:
+            image = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+            if image is None:
+                raise ValueError(f'Could not load image: {image_path}')
+            h, w = image.shape[:2]
+            extent = projector.warp_extent(w, h)
+            gcp_ids = [gcp.id for gcp in gcp_proc.get_gcps()]
+            sidecar_path = save_ortho_model(
+                image_path,
+                model_type,
+                projector,
+                extent,
+                CRS.wgs84_geographic(),
+                gcp_ids,
+                image_size=(w, h),
+            )
+            logger.info(f'Saved ortho model sidecar: {sidecar_path}')
 
         # Warp image if output path specified
         if args.output:

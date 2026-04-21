@@ -1,10 +1,10 @@
-# Auto-GCP Tester
+# Auto-GCP Solver
 
-Standalone CLI tool for testing the auto-match feature extraction and matching pipeline without the GUI. Useful for debugging and parameter tuning.
+Standalone CLI tool for creating Ground Control Points using Computer Vision-based feature extraction and matching. Uses AKAZE/ORB algorithms to detect and match features between test and reference imagery.
 
 ## Installation
 
-The auto-gcp-tester is installed as part of the pointy-mcpointface package:
+The auto-gcp-solver is installed as part of the pointy-mcpointface package:
 
 ```bash
 pip install -e .
@@ -15,7 +15,7 @@ pip install -e .
 ### Generate a sample configuration file
 
 ```bash
-pointy-auto-gcp-tester -g
+pointy-auto-gcp-solver -g
 ```
 
 This creates `options.toml` in the current directory with default values and comments. Edit this file to configure your test.
@@ -23,13 +23,13 @@ This creates `options.toml` in the current directory with default values and com
 ### Use a custom configuration file
 
 ```bash
-pointy-auto-gcp-tester -c my_config.toml
+pointy-auto-gcp-solver -c my_config.toml
 ```
 
 ### Enable verbose logging
 
 ```bash
-pointy-auto-gcp-tester -c my_config.toml -v
+pointy-auto-gcp-solver -c my_config.toml -v
 ```
 
 ## Configuration File Format

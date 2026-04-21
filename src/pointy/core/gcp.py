@@ -13,29 +13,29 @@
 #    Date:    4/3/2026
 #
 """
-Ground Control Point (GCP) data structure
+Ground Control Point (GCP) data structure with GUI-specific metadata.
 """
 
 #  Python Standard Libraries
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 #  Third-Party Libraries
 from rasterio.control import GroundControlPoint
 
 #  Project Libraries
 from tmns.geo.coord import Geographic, Pixel, UTM
+from tmns.geo.proj.gcp import GCP as Base_GCP
 
 @dataclass
-class GCP:
-    """Ground Control Point with coordinates in multiple systems."""
+class GCP(Base_GCP):
+    """Ground Control Point with GUI-specific metadata.
 
-    id: int
-    test_pixel: Pixel
-    reference_pixel: Pixel
-    geographic: Geographic
-    projected: UTM | None = None
-    error: float | None = None
-    enabled: bool = True
+    Extends the terminus-core GCP with additional fields for GUI workflows.
+    """
+
+    source: str = 'manual'
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Post-initialization validation."""
@@ -44,30 +44,10 @@ class GCP:
 
     def to_dict(self):
         """Convert GCP to dictionary."""
-        return {
-            'id': self.id,
-            'test_pixel': {
-                'x': self.test_pixel.x_px,
-                'y': self.test_pixel.y_px
-            },
-            'reference_pixel': {
-                'x': self.reference_pixel.x_px,
-                'y': self.reference_pixel.y_px
-            },
-            'geographic': {
-                'latitude': self.geographic.latitude_deg,
-                'longitude': self.geographic.longitude_deg,
-                'elevation': self.geographic.altitude_m
-            },
-            'projected': {
-                'easting': self.projected.easting,
-                'northing': self.projected.northing,
-                'elevation': self.projected.elevation,
-                'crs': self.projected.crs
-            } if self.projected else None,
-            'error': self.error,
-            'enabled': self.enabled
-        }
+        base_dict = super().to_dict()
+        base_dict['source'] = self.source
+        base_dict['metadata'] = self.metadata
+        return base_dict
 
     @classmethod
     def from_dict(cls, data):
@@ -100,7 +80,9 @@ class GCP:
             geographic=geographic,
             projected=projected,
             error=data.get('error'),
-            enabled=data.get('enabled', True)
+            enabled=data.get('enabled', True),
+            source=data.get('source', 'manual'),
+            metadata=data.get('metadata', {})
         )
 
     def to_gdal_format(self):

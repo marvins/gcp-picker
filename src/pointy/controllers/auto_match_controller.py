@@ -30,7 +30,7 @@ import numpy as np
 
 # Project Libraries
 from pointy.core.auto_match import Auto_Match_Settings
-from pointy.core.match.pipeline import Auto_Matcher
+from pointy.core.match.gcp_solver_pipeline import GCP_Solver_Pipeline
 from pointy.core.match.types import Match_Result
 
 

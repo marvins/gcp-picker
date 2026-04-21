@@ -40,10 +40,10 @@ class Feature_Matcher:
     """
 
     def __init__(self, settings: Auto_Match_Settings):
-        self._ratio        = settings.matching.ratio_test
-        self._matcher_type = settings.matching.matcher
-        self._algo         = settings.algo
-        self._wta_k        = settings.test_extraction.orb.wta_k
+        self._ratio        = settings.feature_settings.matching.ratio_test
+        self._matcher_type = settings.feature_settings.matching.matcher
+        self._algo         = settings.feature_settings.keypoint_algo
+        self._wta_k        = settings.feature_settings.test_extraction.orb.wta_k
 
     def match(self, desc_test: np.ndarray,
               desc_ref:  np.ndarray) -> List[cv2.DMatch]:

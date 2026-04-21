@@ -297,6 +297,12 @@ print(f"Available sources: {stats['sources']}")
   - **TPS_Projection**: Thin Plate Spline transformations (planned)
 - **Orthorectifier**: Legacy RPC-based orthorectification (being refactored)
 
+### Standalone Applications
+
+- **auto-gcp-solver**: Computer Vision-based GCP creation using AKAZE/ORB feature matching
+- **auto-model-solver**: Model fitting using Sobel edge alignment with genetic algorithms
+- **ortho_model_tester**: Test and validate orthorectification models
+
 ### Data Flow
 
 1. User selects points in both viewers
@@ -349,6 +355,18 @@ pointy_mcpointface/
 │   └── pointy/            # Main package directory
 │       ├── __init__.py
 │       ├── main_window.py     # Main application window
+│       ├── apps/              # Standalone applications
+│       │   ├── auto_gcp_solver/    # CV-based GCP creation
+│       │   │   ├── main.py
+│       │   │   ├── config.py
+│       │   │   └── ...
+│       │   ├── auto_model_solver/  # Sobel edge alignment
+│       │   │   ├── main.py
+│       │   │   ├── config.py
+│       │   │   └── ...
+│       │   └── ortho_model_tester/ # Model testing
+│       │       ├── main.py
+│       │       └── ...
 │       ├── viewers/           # Image viewer components
 │       │   ├── test_image_viewer.py      # Async loading support
 │       │   └── reference_viewer.py

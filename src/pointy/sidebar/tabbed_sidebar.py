@@ -20,7 +20,8 @@ Tabbed Sidebar - Sidebar with tabs for better organization
 from qtpy.QtWidgets import QWidget, QVBoxLayout, QTabWidget
 
 #  Project Libraries
-from pointy.sidebar.components.auto_match_panel import Auto_Match_Panel
+from pointy.sidebar.components.auto_gcp_solver_panel import Auto_GCP_Solver_Panel
+from pointy.sidebar.components.auto_model_solver_panel import Auto_Model_Solver_Panel
 from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
 from pointy.sidebar.components.gcp_panel import GCP_Panel
 from pointy.sidebar.components.metadata_panel import Metadata_Panel
@@ -51,7 +52,8 @@ class Tabbed_Sidebar(QWidget):
         self._setup_image_controls_tab()
         self._setup_gcp_tab()
         self._setup_ortho_tab()
-        self._setup_auto_match_tab()
+        self._setup_auto_gcp_solver_tab()
+        self._setup_auto_model_solver_tab()
 
         # Set Info tab as default
         self.tab_widget.setCurrentIndex(0)
@@ -120,17 +122,29 @@ class Tabbed_Sidebar(QWidget):
         nav_layout.addStretch()
         self.tab_widget.addTab(nav_widget, "Ortho")
 
-    def _setup_auto_match_tab(self):
-        """Setup the Auto Match tab."""
-        auto_match_widget = QWidget()
-        auto_match_layout = QVBoxLayout(auto_match_widget)
-        auto_match_layout.setContentsMargins(5, 5, 5, 5)
-        auto_match_layout.setSpacing(0)
+    def _setup_auto_gcp_solver_tab(self):
+        """Setup the Auto GCP Solver tab."""
+        auto_gcp_widget = QWidget()
+        auto_gcp_layout = QVBoxLayout(auto_gcp_widget)
+        auto_gcp_layout.setContentsMargins(5, 5, 5, 5)
+        auto_gcp_layout.setSpacing(0)
 
-        self.auto_match_panel = Auto_Match_Panel()
-        auto_match_layout.addWidget(self.auto_match_panel, stretch=1)
+        self.auto_gcp_solver_panel = Auto_GCP_Solver_Panel()
+        auto_gcp_layout.addWidget(self.auto_gcp_solver_panel, stretch=1)
 
-        self.tab_widget.addTab(auto_match_widget, "Match")
+        self.tab_widget.addTab(auto_gcp_widget, "GCP Solver")
+
+    def _setup_auto_model_solver_tab(self):
+        """Setup the Auto Model Solver tab."""
+        auto_model_widget = QWidget()
+        auto_model_layout = QVBoxLayout(auto_model_widget)
+        auto_model_layout.setContentsMargins(5, 5, 5, 5)
+        auto_model_layout.setSpacing(0)
+
+        self.auto_model_solver_panel = Auto_Model_Solver_Panel()
+        auto_model_layout.addWidget(self.auto_model_solver_panel, stretch=1)
+
+        self.tab_widget.addTab(auto_model_widget, "Model Fitter")
 
     def _set_styling(self):
         """Set the sidebar styling."""
@@ -187,6 +201,10 @@ class Tabbed_Sidebar(QWidget):
         """Get the transformation status panel component."""
         return self.transformation_status_panel
 
-    def get_auto_match_panel(self) -> Auto_Match_Panel:
-        """Get the Auto Match panel component."""
-        return self.auto_match_panel
+    def get_auto_gcp_solver_panel(self) -> Auto_GCP_Solver_Panel:
+        """Get the Auto GCP Solver panel component."""
+        return self.auto_gcp_solver_panel
+
+    def get_auto_model_solver_panel(self) -> Auto_Model_Solver_Panel:
+        """Get the Auto Model Solver panel component."""
+        return self.auto_model_solver_panel
