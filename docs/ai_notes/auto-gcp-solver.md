@@ -522,6 +522,31 @@ Remaining Phase 1 tasks:
 - [x] `Auto_Match_Panel.update_results()` accepts `candidate_rows` list to populate table
 - [ ] Wire controller → `panel.update_results()` with live `Match_Result` stats after run
 
+### Sobel Preview Panel (TODO — needs design)
+
+Users need to see the Sobel edge images directly in the GUI to tune `test_pre_blur`,
+`ref_pre_blur`, `test_dilation`, `ref_dilation`, and `sobel_threshold` without running the
+full pipeline and inspecting files in `temp/debug/`.
+
+**Design sketch:**
+- Add a "Preview Edges" button to the `Auto_Match_Panel` (or a separate debug sub-panel).
+- On click, run `Sobel_Edges.detect()` on the loaded test image and reference chip using the
+  current config settings (without running the GA).
+- Display the resulting `float32 [0, 1]` edge images in a small side-by-side viewer — either
+  a dedicated `QDialog` with two `QLabel` pixmaps, or by reusing the existing
+  `Test_Image_Viewer` / reference viewer with a toggle mode.
+- Overlay the current parameter values (`pre_blur`, `dilation`, `threshold`, `kernel_size`)
+  as a text annotation on each preview image.
+- Consider a live "sliders → preview" mode so the user can scrub parameters without
+  re-running.
+
+**Key constraint:** The preview must use the *same* `Sobel_Edge_Settings` objects that the
+`Edge_Aligner` will use, derived from the parsed config, to guarantee WYSIWYG fidelity.
+
+**Deferred until Phase 1 controller wiring is stable.**
+
+---
+
 ### Viewer Candidate Drawing (TODO — needs design)
 
 After `Auto_Matcher.run()` returns `Match_Result.candidate_pixels` (Nx2, full-res image
@@ -568,6 +593,137 @@ in the raw (non-orthorectified) view.  However:
 - [ ] `SUPERPOINT` and `LIGHTGLUE` entries added to `Match_Algo`; hidden if `torch` absent
 - [ ] Fine-tuning pipeline on IR/visible pairs from the collection
 - [ ] Fallback to AKAZE if `torch` not available
+
+---
+
+## Bug Fixes & Known Issues
+
+### Remaining Issues — TODO
+
+#### TODO-01 — `Edge_Aligner` requires a pre-existing `Projector`; no cold-start  🔴 High
+`edge_aligner.align()` raises `ValueError("No projector model available for
+optimization")` if neither the constructor nor the call-site supplies an
+`initial_model`.  There is no cold-start path for the common case where no
+prior model exists.
+
+**Design direction:** Require the user to provide 1-2 manual GCPs to create a
+basic/degraded Affine model that can constrain the optimization problem.  The
+GA optimizer can then refine this initial affine using edge alignment.  This
+is more robust than a metadata-based cold-start since it grounds the solution
+in known ground control points.
+
+#### TODO-02 — `GA_Optimizer._warp_with_model` falls back to resize for non-Affine  🔴 High
+```python
+else:
+    return cv2.resize(image, (w, h))   # ← nonsense for RPC/TPS
+```
+For any non-Affine model the fitness function returns a meaningless score.
+The optimizer will "converge" on garbage parameters.
+
+**Needed:** Implement a proper remap path for RPC/TPS using
+`projector.compute_remap_coordinates()`, reusing the same code path as
+`transformation.warp_image()`.  Consider extracting a shared
+`remap_with_projector(image, projector, output_size)` helper in
+`pointy.core.transformation` and calling it from both `warp_image` and the
+GA fitness function.
+
+#### TODO-03 — GCP extraction uses model's own `pixel_to_world`; ignores ref image  🟡 Medium
+`_extract_gcps_from_model` maps grid points through `model.pixel_to_world()`
+but never uses `ref_geo_transform`.  This is correct for the fitted model
+but discards the ability to validate against the reference chip — e.g. to
+verify that the projected geo coordinates actually land in the reference tile
+bounds.
+
+**Suggested:** After extracting geo points, verify they lie within the reference
+chip bounds; flag or drop points that fall outside.
+
+#### Affine Bootstrap as a Seed for RPC / TPS Refinement
+
+The current non-Affine path already does this implicitly: it projects the 4 test image
+corners through the prior model (TPS or RPC) to produce geographic anchors, fits an Affine
+to those 4 points, and hands that Affine to the GA.  The GA then refines the Affine via edge
+alignment.  The question is whether the converged Affine can be used to *improve* the
+subsequent RPC or TPS fit.
+
+**What GCPs are needed for the bootstrap Affine?**
+
+The bootstrap currently uses the prior model's own `pixel_to_world` to synthesize 4 corner
+GCPs — so it requires a prior model (TPS, RPC) that already maps pixel → geo.  If no prior
+model is available, the minimum real GCP requirements for the degraded cases are:
+
+| GCPs | DOF solved | What you get |
+|------|-----------|--------------|
+| 1    | Translation (2) | Origin shift only — place image center at the GCP geo coordinate. Scale and rotation are assumed from metadata (GSD + north-up). |
+| 2    | Translation + rotation (3) | Estimate bearing from the pixel-to-pixel vector vs geo-to-geo vector. Scale still from metadata. |
+| 3    | Full Affine (6) | Unique least-squares solution — scale, rotation, shear, translation all free. This is the minimum for a properly constrained Affine. |
+
+In practice the 1- and 2-GCP cases require a known GSD (from image metadata or the config)
+to set the scale.  Without it the transform is underdetermined and the GA search bounds will
+be unbounded.
+
+**Implication for cold-start:** Rather than requiring a full prior model, we could accept
+1–3 manual GCPs and construct a degraded Affine as the GA seed.  This is the design direction
+noted in TODO-01.
+
+**It can also improve an existing prior model, and here is the mechanism:**
+
+1. **Affine → GCP grid** — after the GA converges, `_extract_gcps_from_model` samples a
+   regular grid of pixel→geo pairs from the refined Affine.  These synthetic GCPs are already
+   more accurate than the original prior because they have been edge-aligned.
+
+2. **RPC seeding** — pass the synthetic GCPs as additional observations when solving the RPC
+   polynomial system.  The existing RPC coefficients act as a regulariser (prior), and the
+   GCPs provide the correction signal.  Concretely: solve a *delta* RPC (offset model) on top
+   of the existing coefficients using the GCP residuals.
+
+3. **TPS seeding** — re-solve the TPS directly from the synthetic GCPs.  TPS is interpolatory
+   so it will pass exactly through the grid points, giving a refined warp that is consistent
+   with the edge-aligned Affine in the interior and falls back to the prior near the edges.
+
+**Limits of the approach:**
+
+- The Affine bootstrap is a *rigid* model (6 DOF).  If the true distortion is nonlinear
+  (e.g. radial lens distortion, terrain relief), the Affine will absorb the mean shift but
+  leave residuals.  The GCP grid extracted from it will carry those residuals into the
+  RPC/TPS re-solve.
+- 4 corners give a sparse constraint for a high-order RPC.  The GA's full GCP grid
+  (currently 4×4 = 16 points) is far better — use that, not just the bootstrap corners.
+- For TPS this is fine: 16 well-spread control points give a good thin-plate solution.
+  For RPC the system is overdetermined (80 coefficients, 16 observations) so regularisation
+  is required — consider fixing all coefficients except the bias/translation offsets.
+
+**Recommended implementation order:**
+1. RPC delta-offset solve from Affine-derived GCPs (small change, high payoff).
+2. TPS re-solve from Affine-derived GCPs (already almost implemented — just wire it up).
+3. Iterative refinement: re-run edge alignment with the updated RPC/TPS as the new prior.
+
+---
+
+#### TODO-RPC — Direct RPC parameter optimization in GA  🔴 High
+
+The GA currently bootstraps an `Affine` from RPC corner projections when the initial model is
+an RPC.  This loses the RPC's geometric accuracy and converges on a coarser solution.
+
+**Design direction:** Implement `RPC.to_params()` / `RPC.from_params()` exposing a compact
+offset vector over the rational polynomial coefficients (bias offsets on numerator/denominator
+coefficients are sufficient — typically 10–20 free parameters).  Update `_affine_param_bounds`
+in `ga_optimizer.py` to accept any model type and dispatch to a model-specific bounds function.
+**Start here** — RPC is the highest-value model type for the aerial/satellite imagery this tool
+targets.
+
+#### TODO-TPS — Direct TPS refinement support  🟡 Medium
+
+TPS has no compact parameter vector (it is defined by its control-point weights), so direct GA
+optimisation is not practical.
+
+**Design direction:** After the GA converges on a bootstrap Affine, use the synthetic GCPs
+extracted from that Affine to re-solve the TPS.  The refinement loop then becomes:
+1. Bootstrap Affine → GA → refined Affine
+2. Extract GCP grid from refined Affine
+3. Re-solve TPS from updated GCPs
+4. Validate TPS RMSE; iterate if needed
+
+Tackle after RPC support is stable.
 
 ---
 

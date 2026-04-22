@@ -50,6 +50,7 @@ class Match_Result:
     n_ref_keypoints:  int               = 0
     n_candidates:     int               = 0
     n_inliers:        int               = 0
+    candidate_confidences: np.ndarray   = field(default_factory=lambda: np.empty(0))
     raw_match_pixels: np.ndarray        = field(default_factory=lambda: np.empty((0, 2)))
     raw_match_ref_pixels: np.ndarray    = field(default_factory=lambda: np.empty((0, 2)))
     homography:       np.ndarray | None = None

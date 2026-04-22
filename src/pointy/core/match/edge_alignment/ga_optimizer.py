@@ -1,4 +1,4 @@
-#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#*
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
 #*                                                                                    *#
 #*                           Copyright (c) 2026 Terminus LLC                          *#
 #*                                                                                    *#
@@ -23,7 +23,7 @@ transform that maximizes edge correlation between test and reference images.
 from dataclasses import dataclass
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 # Third-Party Libraries
 import cv2
@@ -33,8 +33,8 @@ from scipy.optimize import differential_evolution
 # Project Libraries
 from tmns.geo.coord import Pixel
 from tmns.geo.proj.affine import Affine
+from tmns.geo.proj.base import Projector, Transformation_Type
 from tmns.geo.proj.factory import create_projector
-from tmns.geo.proj.base import Transformation_Type
 
 @dataclass
 class GA_Result:
@@ -43,7 +43,10 @@ class GA_Result:
     Attributes:
         success:          Whether optimization converged.
         transform:        3x3 homography or affine matrix (best fit) - deprecated.
-        score:            Final correlation score (higher is better).
+        score:            Final combined score (higher is better).
+        edge_score:       Final Sobel edge NCC component, normalized to [0, 1].
+        gcp_score:        Final GCP reprojection component [0, 1] (0.0 if no GCPs).
+        gcp_weight:       Weight applied to gcp_score in the combined score.
         n_iterations:     Number of iterations performed.
         n_function_evals: Number of fitness evaluations.
         message:          Optimizer exit message.
@@ -52,6 +55,9 @@ class GA_Result:
     success:          bool
     transform:        np.ndarray | None
     score:            float
+    edge_score:       float
+    gcp_score:        float
+    gcp_weight:       float
     n_iterations:     int
     n_function_evals: int
     message:          str
@@ -78,48 +84,7 @@ class GA_Settings:
     tol:           float         = 0.001
     workers:       int           = -1
     polish:        bool          = True
-
-
-def _affine_param_bounds(model: Affine, bounds_px: float = 50.0) -> list[tuple[float, float]]:
-    """Compute differential-evolution bounds for an Affine model's 6 parameters.
-
-    Projects the 4 image corners to geographic space and derives per-coefficient
-    bounds scaled by bounds_px (in pixels).
-
-    Args:
-        model:     Fitted Affine projector with _image_size set.
-        bounds_px: Translation search radius in pixels.
-
-    Returns:
-        List of (min, max) bounds for [m00, m01, m02, m10, m11, m12].
-    """
-    if model._image_size is None:
-        raise ValueError("Affine model has no image_size — cannot derive param bounds.")
-
-    params = model.to_params()
-    w, h = model._image_size
-
-    corners = [
-        Pixel(x_px=0,     y_px=0),
-        Pixel(x_px=w - 1, y_px=0),
-        Pixel(x_px=w - 1, y_px=h - 1),
-        Pixel(x_px=0,     y_px=h - 1),
-    ]
-    geos = [model.pixel_to_world(c) for c in corners]
-    lons = [g.longitude_deg for g in geos]
-    lats = [g.latitude_deg  for g in geos]
-
-    d_lon_per_px = (max(lons) - min(lons)) / w
-    d_lat_per_px = (max(lats) - min(lats)) / h
-
-    return [
-        (params[0] - d_lon_per_px * 0.2, params[0] + d_lon_per_px * 0.2),                # m00
-        (params[1] - d_lon_per_px * 0.2, params[1] + d_lon_per_px * 0.2),                # m01
-        (min(lons) - d_lon_per_px * bounds_px, max(lons) + d_lon_per_px * bounds_px),    # m02 (tx)
-        (params[3] - d_lat_per_px * 0.2, params[3] + d_lat_per_px * 0.2),                # m10
-        (params[4] - d_lat_per_px * 0.2, params[4] + d_lat_per_px * 0.2),                # m11
-        (min(lats) - d_lat_per_px * bounds_px, max(lats) + d_lat_per_px * bounds_px),    # m12 (ty)
-    ]
+    max_edge_dim:  int           = 2048
 
 
 class GA_Optimizer:
@@ -136,72 +101,144 @@ class GA_Optimizer:
                        test_edges: np.ndarray,
                        ref_edges: np.ndarray,
                        model: Projector,
+                       ref_geo_transform: Callable,
                        bounds_px: float = 50.0,
                        callback: Callable | None = None,
                        init_params: np.ndarray | None = None,
-                       manual_gcps: list | None = None) -> GA_Result:
+                       manual_gcps: list | None = None,
+                       gcp_weight: float = 0.0) -> GA_Result:
         """Optimize model parameters using differential evolution.
 
         Args:
-            test_edges: Test edge image (H, W) uint8.
-            ref_edges:  Reference edge image (H, W) uint8.
-            model:      Projector model (Affine or RPC) to optimize.
-            bounds_px:  Search bounds for parameter variations.
-            callback:   Optional callback(params, score) for progress.
-            init_params: Optional initial model parameters for warm-starting.
-            manual_gcps: Optional list of manual GCPs to include in fitness evaluation.
+            test_edges:        Test edge image (H, W) float32.
+            ref_edges:         Reference edge image (H, W) float32.
+            model:             Projector model (Affine) to optimize.
+            ref_geo_transform: Callable ``(px_x, px_y) -> (lon, lat)`` for the reference chip.
+                               Required for correct pixel-space warping of the test image.
+            bounds_px:         Search bounds for parameter variations.
+            callback:          Optional callback(params, score) for progress.
+            init_params:       Optional initial model parameters for warm-starting.
+            manual_gcps:       Optional list of manual GCPs to include in fitness evaluation.
+            gcp_weight:        Weight [0-1] of GCP score in combined fitness.
 
         Returns:
             GA_Result with best model parameters and optimization info.
         """
         # Downsample edge images for faster fitness evaluation
-        MAX_EDGE_DIM = 512
-        h_full, w_full = ref_edges.shape[:2]
-        scale = min(MAX_EDGE_DIM / h_full, MAX_EDGE_DIM / w_full, 1.0)
-        if scale < 1.0:
-            new_w = int(w_full * scale)
-            new_h = int(h_full * scale)
-            test_edges = cv2.resize(test_edges, (new_w, new_h), interpolation=cv2.INTER_AREA)
-            ref_edges  = cv2.resize(ref_edges,  (new_w, new_h), interpolation=cv2.INTER_AREA)
-            logging.info(f'GA_Optimizer: downsampled edges {w_full}x{h_full} -> {new_w}x{new_h} (scale={scale:.3f})')
+        MAX_EDGE_DIM = self._settings.max_edge_dim
+        h_test_full, w_test_full = test_edges.shape[:2]
+        h_ref_full,  w_ref_full  = ref_edges.shape[:2]
+        ref_scale  = min(MAX_EDGE_DIM / h_ref_full,  MAX_EDGE_DIM / w_ref_full,  1.0)
+        test_scale = min(MAX_EDGE_DIM / h_test_full, MAX_EDGE_DIM / w_test_full, 1.0)
+        if ref_scale < 1.0:
+            new_ref_w = int(w_ref_full * ref_scale)
+            new_ref_h = int(h_ref_full * ref_scale)
+            ref_edges = cv2.resize(ref_edges, (new_ref_w, new_ref_h), interpolation=cv2.INTER_AREA)
+        if test_scale < 1.0:
+            new_test_w = int(w_test_full * test_scale)
+            new_test_h = int(h_test_full * test_scale)
+            test_edges = cv2.resize(test_edges, (new_test_w, new_test_h), interpolation=cv2.INTER_AREA)
+        if ref_scale < 1.0 or test_scale < 1.0:
+            logging.info(
+                f'GA_Optimizer: downsampled edges\n'
+                f'  ref:  {w_ref_full}x{h_ref_full} -> {ref_edges.shape[1]}x{ref_edges.shape[0]} (scale={ref_scale:.3f})\n'
+                f'  test: {w_test_full}x{h_test_full} -> {test_edges.shape[1]}x{test_edges.shape[0]} (scale={test_scale:.3f})'
+            )
 
         h, w = ref_edges.shape[:2]
 
         # Extract initial model parameters and compute bounds
         initial_params = model.to_params()
-        bounds = _affine_param_bounds(model, bounds_px=bounds_px)
+        bounds = model.get_param_bounds(bounds_px=bounds_px)
 
-        def _warp_with_model(image: np.ndarray, model: Projector, output_size: tuple[int, int]) -> np.ndarray:
-            """Warp image using the provided model."""
+        # Pre-compute reference pixel → geo lookup arrays (constant across all fitness calls).
+        # Assumes ref_geo_transform is a linear mapping (valid for tile chips), so we can
+        # evaluate only the 4 corners and interpolate — or simply evaluate all pixels using
+        # numpy broadcasting after sampling the two corner values.
+        ref_y_grid, ref_x_grid = np.mgrid[0:h, 0:w]
+        ref_x_flat = ref_x_grid.ravel().astype(np.float64)
+        ref_y_flat = ref_y_grid.ravel().astype(np.float64)
+        # ref_geo_transform is defined over full-res chip pixels.
+        # Sample at full-res corners; pixel coords in downsampled space are
+        # scaled by 1/ref_scale to recover the full-res position.
+        full_w = w_ref_full - 1.0
+        full_h = h_ref_full - 1.0
+        lon00, lat00 = ref_geo_transform(0.0,    0.0)
+        lon10, lat10 = ref_geo_transform(full_w, 0.0)
+        lon01, lat01 = ref_geo_transform(0.0,    full_h)
+        # Derivatives per downsampled pixel
+        d_lon_dx = (lon10 - lon00) / max(w - 1, 1)
+        d_lon_dy = (lon01 - lon00) / max(h - 1, 1)
+        d_lat_dx = (lat10 - lat00) / max(w - 1, 1)
+        d_lat_dy = (lat01 - lat00) / max(h - 1, 1)
+        ref_lons = lon00 + d_lon_dx * ref_x_flat + d_lon_dy * ref_y_flat
+        ref_lats = lat00 + d_lat_dx * ref_x_flat + d_lat_dy * ref_y_flat
+        ref_geo_coords = np.stack([ref_lons, ref_lats, np.ones(len(ref_lons))])  # (3, N)
+        logging.info(
+            f'GA_Optimizer: ref geo extent  lon=[{ref_lons.min():.5f}, {ref_lons.max():.5f}]'
+            f'  lat=[{ref_lats.min():.5f}, {ref_lats.max():.5f}]'
+        )
+
+        def _warp_with_model( image: np.ndarray,
+                              model: Projector,
+                              output_size: tuple[int, int]) -> np.ndarray:
+            """Warp test image into reference pixel space via geo coordinates.
+
+            Current implementation (Affine-specific):
+                - Uses pre-computed ref_geo_coords (3, N) array: ref pixel → geo
+                - Applies model._inverse_matrix @ ref_geo_coords: geo → test pixel
+                - Scales to downsampled test_edges pixel space
+                - Uses cv2.remap with NaN border for out-of-bounds pixels
+
+            Planned refactor (projector-agnostic):
+                - Use model.world_to_pixel() instead of _inverse_matrix
+                - Build per-crop geo coords on the fly using linear constants
+                - Drop full ref_geo_coords array to save memory
+
+            Args:
+                image: Test edge image (H, W) float32.
+                model: Projector model to use for the warp.
+                output_size: Target (height, width) for the warped output.
+
+            Returns:
+                Warped image array with NaN values where the test image does not
+                overlap the reference footprint.
+
+            Note:
+                For non-Affine models, this currently falls back to cv2.resize
+                (stub implementation). TODO-02 in auto-gcp-solver.md.
+            """
             h, w = output_size
 
-            model_type = model.transformation_type
-
-            if model_type == Transformation_Type.AFFINE:
-                # Use affine warp
+            if model.transformation_type == Transformation_Type.AFFINE:
                 if model._inverse_matrix is None:
                     raise ValueError("Model has no inverse matrix")
 
-                # Create coordinate grids for output image
-                y_coords, x_coords = np.mgrid[0:h, 0:w]
+                if ref_geo_coords is not None:
+                    # Step 1: ref pixel → geo (pre-computed)
+                    # Step 2: geo → full-res test pixel via model inverse matrix
+                    src_coords = model._inverse_matrix @ ref_geo_coords  # (3, N)
+                    # Step 3: scale to downsampled test_edges pixel space
+                    source_x = (src_coords[0].reshape(h, w) * test_scale).astype(np.float32)
+                    source_y = (src_coords[1].reshape(h, w) * test_scale).astype(np.float32)
+                else:
+                    # Fallback: direct pixel-to-pixel (wrong coordinate space, but avoids crash)
+                    y_coords, x_coords = np.mgrid[0:h, 0:w]
+                    coords = np.stack([x_coords.ravel(), y_coords.ravel(), np.ones(h * w)])
+                    src_coords = model._inverse_matrix @ coords
+                    source_x = src_coords[0].reshape(h, w).astype(np.float32)
+                    source_y = src_coords[1].reshape(h, w).astype(np.float32)
 
-                # Create pixel coordinate arrays
-                coords = np.stack([x_coords.ravel(), y_coords.ravel(), np.ones_like(x_coords.ravel())])
-
-                # Apply inverse transform to get source coordinates
-                source_coords = model._inverse_matrix @ coords
-                source_x = source_coords[0].reshape(h, w)
-                source_y = source_coords[1].reshape(h, w)
-
-                # Warp using OpenCV
-                warped = cv2.remap(image, source_x.astype(np.float32), source_y.astype(np.float32),
-                                 cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+                warped = cv2.remap(image, source_x, source_y,
+                                   cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT,
+                                   borderValue=np.nan)
                 return warped
             else:
                 # For RPC models, fall back to identity for now (this needs proper implementation)
                 return cv2.resize(image, (w, h))
 
         fitness_call_counter = [0]
+        last_score = [0.0]
 
         def fitness(params: np.ndarray) -> float:
             fitness_call_counter[0] += 1
@@ -256,7 +293,11 @@ class GA_Optimizer:
                 )
 
             normalized_edge_score = (edge_score + 1.0) / 2.0
-            combined_score = 0.7 * normalized_edge_score + 0.3 * gcp_score
+            if manual_gcps and gcp_weight > 0.0:
+                combined_score = (1.0 - gcp_weight) * normalized_edge_score + gcp_weight * gcp_score
+            else:
+                combined_score = normalized_edge_score
+            last_score[0] = combined_score
             return -combined_score
 
         iteration_counter = [0]
@@ -264,10 +305,9 @@ class GA_Optimizer:
         def cb(xk, convergence):
             iteration_counter[0] += 1
             if iteration_counter[0] % 10 == 0:
-                score = -fitness(xk)
-                logging.info(f'GA_Optimizer: iteration {iteration_counter[0]}, convergence={convergence:.6f}, score={score:.6f}')
+                logging.info(f'GA_Optimizer: iteration {iteration_counter[0]}, convergence={convergence:.6f}, score={last_score[0]:.6f}')
             if callback:
-                callback(xk, -fitness(xk))
+                callback(xk, last_score[0])
             return False
 
         logging.info(f'GA_Optimizer: Starting DE with {len(initial_params)} model parameters, popsize={self._settings.popsize}, maxiter={self._settings.maxiter}')
@@ -297,10 +337,30 @@ class GA_Optimizer:
         # Create the final optimized model
         final_model = model.from_params(result.x)
 
+        # Re-evaluate final params to extract component scores for reporting
+        final_temp = model.from_params(result.x)
+        final_warped = _warp_with_model(test_edges, final_temp, (w, h))
+        final_edge_score = (self._compute_ncc(final_warped, ref_edges) + 1.0) / 2.0
+        final_gcp_score = 0.0
+        effective_gcp_weight = gcp_weight if (manual_gcps and gcp_weight > 0.0) else 0.0
+        if manual_gcps:
+            gcp_errors = []
+            for gcp in manual_gcps:
+                projected_geo = final_temp.pixel_to_world(gcp.pixel)
+                geo_error = np.sqrt(
+                    (projected_geo.longitude_deg - gcp.geographic.longitude_deg) ** 2 +
+                    (projected_geo.latitude_deg  - gcp.geographic.latitude_deg)  ** 2
+                )
+                gcp_errors.append(geo_error)
+            final_gcp_score = 1.0 / (1.0 + np.mean(gcp_errors))
+
         return GA_Result(
             success=result.success,
             transform=None,  # No longer using affine transform
             score=-result.fun,
+            edge_score=final_edge_score,
+            gcp_score=final_gcp_score,
+            gcp_weight=effective_gcp_weight,
             optimized_model=final_model,
             n_iterations=result.nit,
             n_function_evals=result.nfev,
@@ -322,11 +382,21 @@ class GA_Optimizer:
     def _compute_ncc(self, img1: np.ndarray, img2: np.ndarray) -> float:
         """Compute normalized cross-correlation between two images.
 
+        NaN pixels in img1 (warped test image border) are excluded so only
+        the valid overlap region contributes to the score.
+
         Returns:
             NCC score in [-1, 1], higher is better match.
         """
         i1 = img1.astype(np.float64).flatten()
         i2 = img2.astype(np.float64).flatten()
+
+        mask = np.isfinite(i1)
+        if mask.sum() < 100:
+            return 0.0
+
+        i1 = i1[mask]
+        i2 = i2[mask]
 
         i1 -= i1.mean()
         i2 -= i2.mean()
@@ -335,4 +405,4 @@ class GA_Optimizer:
         if denom < 1e-10:
             return 0.0
 
-        return np.sum(i1 * i2) / denom
+        return float(np.sum(i1 * i2) / denom)

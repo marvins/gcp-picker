@@ -30,8 +30,14 @@ import numpy as np
 
 # Project Libraries
 from pointy.core.auto_match import Auto_Match_Settings
+from pointy.core.gcp import GCP
 from pointy.core.match.edge_alignment import Edge_Aligner
+from pointy.core.match.edge_alignment.edge_aligner import (
+    bootstrap_affine_from_projector,
+    cold_start_affine_projector,
+)
 from pointy.core.match.types import Match_Result
+from tmns.geo.proj.base import Projector
 
 
 class Auto_Model_Solver_Worker(QThread):
@@ -40,18 +46,20 @@ class Auto_Model_Solver_Worker(QThread):
     finished = Signal(object)  # Match_Result
 
     def __init__(self, settings: Auto_Match_Settings, test_image: np.ndarray,
-                 ref_chip: np.ndarray, geo_transform: Callable, manual_gcps=None):
+                 ref_chip: np.ndarray, geo_transform: Callable,
+                 projector: Projector, manual_gcps=None):
         super().__init__()
         self.settings = settings
         self.test_image = test_image
         self.ref_chip = ref_chip
         self.geo_transform = geo_transform
+        self.projector = projector
         self.manual_gcps = manual_gcps
 
     def run(self):
         """Execute the auto model solver pipeline."""
         try:
-            aligner = Edge_Aligner(self.settings.edge_settings)
+            aligner = Edge_Aligner(self.settings.edge_settings, projector=self.projector)
             result = aligner.align(self.test_image, self.ref_chip, self.geo_transform, self.manual_gcps)
             self.finished.emit(result)
         except Exception as e:
@@ -115,8 +123,19 @@ class Auto_Model_Solver_Controller:
         self.status_bar.showMessage("Running Auto Model Solver...")
         self.panel.setEnabled(False)
 
+        # Build the initial projector before launching the worker
+        h_test, w_test = test_image.shape[:2]
+        h_ref, w_ref = ref_chip.shape[:2]
+        logging.info('Auto Model Solver: cold-starting Affine from ref geo extent')
+        initial_projector = cold_start_affine_projector(
+            w_test, h_test, w_ref, h_ref, geo_transform
+        )
+
         # Start worker thread
-        self.worker = Auto_Model_Solver_Worker(settings, test_image, ref_chip, geo_transform, manual_gcps)
+        self.worker = Auto_Model_Solver_Worker(
+            settings, test_image, ref_chip, geo_transform,
+            initial_projector, manual_gcps
+        )
         self.worker.finished.connect(self._on_worker_finished)
         self.worker.start()
 
@@ -189,8 +208,6 @@ class Auto_Model_Solver_Controller:
         """Add the matched GCPs to the GCP processor."""
         if result.candidate_pixels is None or result.candidate_geos is None:
             return
-
-        from pointy.core.gcp import GCP
 
         for px, geo in zip(result.candidate_pixels, result.candidate_geos):
             gcp = GCP(

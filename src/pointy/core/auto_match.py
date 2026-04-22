@@ -19,7 +19,6 @@ Auto-match types and settings for the automatic GCP picker pipeline.
 # Python Standard Libraries
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Tuple, Type
 
 class Match_Algo(Enum):
     """Feature extraction algorithm for automatic GCP matching (ALGO1 only).
@@ -197,11 +196,13 @@ class Debug_Settings:
     """Debug settings for saving intermediate results.
 
     Attributes:
-        save_sobel_images:    Whether to save Sobel edge images to disk.
+        save_test_sobel:      Whether to save the test image Sobel edge image to disk.
+        save_ref_sobel:       Whether to save the reference chip Sobel edge image to disk.
         output_directory:     Directory path for debug output files.
         save_intermediate_steps: Save additional intermediate processing steps.
     """
-    save_sobel_images:      bool   = False
+    save_test_sobel:         bool   = False
+    save_ref_sobel:          bool   = False
     output_directory:       str    = "temp/debug"
     save_intermediate_steps: bool   = False
 
@@ -211,26 +212,46 @@ class Edge_Alignment_Settings:
     """Settings for the edge-based GA pipeline.
 
     Attributes:
-        edge_dilation:    Dilation kernel size for edge images (0 = no dilation).
+        sobel_kernel_size: Sobel operator kernel size (1, 3, 5, or 7).
+        sobel_threshold:  Hard threshold on normalized magnitude (0.0 = disabled, 0.0-1.0 scale).
+        test_pre_blur:    Gaussian blur kernel for test image before Sobel (0 = disabled).
+                          Use to suppress pixel-level noise in high-res imagery.
+        test_dilation:    Morphological dilation iterations for test edges (0 = disabled).
+        ref_pre_blur:     Gaussian blur kernel for reference chip before Sobel (0 = disabled).
+        ref_dilation:     Morphological dilation iterations for reference edges (0 = disabled).
+        gcp_weight:       Weight [0.0-1.0] of GCP reprojection score in GA fitness.
+                          0.0 = edges only (recommended); 1.0 = GCPs only.
         ga_popsize:       Population size for differential evolution.
         ga_maxiter:       Maximum iterations for differential evolution.
         ga_mutation:      Mutation factor tuple (min, max) for DE.
         ga_recombination: Recombination/crossover probability for DE.
+        ga_max_edge_dim:  Maximum edge image dimension before downsampling for GA fitness.
+                          Higher = more detail preserved but slower per-iteration.
         search_bounds_px: Search bounds in pixels for transform parameters.
         debug:            Debug settings for saving intermediate results.
     """
-    edge_dilation:    int           = 3
+    sobel_kernel_size:  int           = 3
+    sobel_threshold:    float         = 0.0
+    test_pre_blur:      int           = 0
+    test_dilation:      int           = 3
+    ref_pre_blur:       int           = 0
+    ref_dilation:       int           = 3
+    gcp_weight:         float         = 0.0
     ga_popsize:       int           = 15
     ga_maxiter:       int           = 200
-    ga_mutation:      Tuple[float, float] = (0.5, 1.0)
+    ga_mutation:      tuple[float, float] = (0.5, 1.0)
     ga_recombination: float         = 0.7
+    ga_max_edge_dim:  int           = 2048
     search_bounds_px: float         = 50.0  # Prior ±50px search range
     debug:            Debug_Settings = field(default_factory=Debug_Settings)
 
     def to_log_string(self) -> str:
         """Return a compact human-readable summary of edge alignment settings."""
         return (
-            f'edge_dilation={self.edge_dilation}px, '
+            f'sobel_kernel={self.sobel_kernel_size}, sobel_threshold={self.sobel_threshold}, '
+            f'test(pre_blur={self.test_pre_blur}, dilation={self.test_dilation}), '
+            f'ref(pre_blur={self.ref_pre_blur}, dilation={self.ref_dilation}), '
+            f'gcp_weight={self.gcp_weight}, '
             f'GA(popsize={self.ga_popsize}, maxiter={self.ga_maxiter}, '
             f'mutation={self.ga_mutation}, recombination={self.ga_recombination}) | '
             f'search_bounds=±{self.search_bounds_px}px'

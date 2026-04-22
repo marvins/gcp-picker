@@ -16,6 +16,7 @@
 Pytest configuration and fixtures for Pointy-McPointface tests.
 """
 
+import logging
 import pytest
 import os
 import sys
@@ -101,7 +102,12 @@ def temp_cache_dir(tmp_path):
 pytest_plugins = []
 
 def pytest_configure(config):
-    """Configure pytest with custom markers."""
+    """Configure pytest with custom markers and logging."""
+    # Suppress rasterio DEBUG logs
+    logging.getLogger('rasterio').setLevel(logging.WARNING)
+    logging.getLogger('rasterio._env').setLevel(logging.WARNING)
+    logging.getLogger('rasterio.session').setLevel(logging.WARNING)
+
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )

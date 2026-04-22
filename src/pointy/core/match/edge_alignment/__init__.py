@@ -36,12 +36,18 @@ GA_Optimizer        — Genetic algorithm for transform parameter search
 """
 
 # Edge-based genetic algorithm alignment
-from pointy.core.match.edge_alignment.edge_aligner import Edge_Aligner
+from pointy.core.match.edge_alignment.edge_aligner import (
+    Edge_Aligner,
+    bootstrap_affine_from_projector,
+    cold_start_affine_projector,
+)
 from pointy.core.match.edge_alignment.ga_optimizer import GA_Optimizer, GA_Result, GA_Settings
 from pointy.core.match.edge_alignment.sobel_edges import Sobel_Edges, Sobel_Edge_Settings
 
 __all__ = [
     'Edge_Aligner',
+    'bootstrap_affine_from_projector',
+    'cold_start_affine_projector',
     'GA_Optimizer',
     'GA_Result',
     'GA_Settings',

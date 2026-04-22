@@ -32,13 +32,13 @@ import tomli
 
 # Project Libraries
 from pointy.core.auto_match import (
-    Edge_Alignment_Settings,
     Auto_Match_Settings,
+    Debug_Settings,
+    Edge_Alignment_Settings,
 )
 from pointy.core.gcp_processor import GCP_Processor
 from pointy.core.ortho_model_persistence import apply_model_to_projector, load_ortho_model, sidecar_exists
-from tmns.geo.coord import CRS, Geographic
-from tmns.geo.proj import Identity, Transformation_Type
+from tmns.geo.proj import Transformation_Type
 from tmns.geo.proj.factory import create_projector
 
 
@@ -69,6 +69,8 @@ class Reference_Config:
     bounds: dict[str, float] | None = None
     center: dict[str, float] | None = None
     zoom: int | None = None
+    max_zoom: int = 17
+    num_threads: int = 8
     file_path: str | None = None
 
 
@@ -80,6 +82,25 @@ class GCPs_Config:
         file: Path to manual GCP JSON file for use as a prior in matching.
     """
     file: str | None = None
+
+
+@dataclass
+class Output_Config:
+    """Output configuration (optional).
+
+    Attributes:
+        model_output_path:  Path to save the fitted model.
+        ref_chip_output_path: Path to save the stitched reference chip as GeoTiff.
+        visualization_path: Path to save visualization results.
+        output_model_type:  Model type to solve for after GA alignment
+                            ('affine' or 'rpc'). Affine is always used for the
+                            GA optimization stage; this controls whether a
+                            secondary RPC solve is attempted post-alignment.
+    """
+    model_output_path:    str | None = None
+    ref_chip_output_path: str | None = None
+    visualization_path:   str | None = None
+    output_model_type:    str        = 'affine'
 
 
 @dataclass
@@ -101,6 +122,7 @@ class Configuration:
     reference: Reference_Config
     gcps: GCPs_Config
     auto_match: Auto_Match_Settings
+    output: Output_Config
 
     @staticmethod
     def parse_command_line() -> argparse.Namespace:
@@ -130,6 +152,11 @@ class Configuration:
             '-v', '--verbose',
             action='store_true',
             help='Enable verbose logging'
+        )
+        parser.add_argument(
+            '--clear-cache',
+            action='store_true',
+            help='Clear the tile cache before running'
         )
         return parser.parse_args()
 
@@ -185,7 +212,16 @@ class Configuration:
             f.write("# service = \"Esri World Imagery\"\n")
             f.write("# center_lat = 35.4\n")
             f.write("# center_lon = -119.0\n")
-            f.write("# zoom = 12\n")
+            f.write("# zoom = 14          # Starting zoom (auto-upgraded to match test image GSD)\n")
+            f.write("# max_zoom = 17      # Cap on zoom level to limit tile fetching.\n")
+            f.write("#                    # Approximate GSD at mid-latitudes (~35N) per zoom level:\n")
+            f.write("#                    #   zoom 14 -> ~9.6 m/px  ( ~5x5   tiles for 10km footprint)\n")
+            f.write("#                    #   zoom 15 -> ~4.8 m/px  ( ~7x7   tiles)\n")
+            f.write("#                    #   zoom 16 -> ~2.4 m/px  (~11x11  tiles)\n")
+            f.write("#                    #   zoom 17 -> ~1.2 m/px  (~21x21  tiles)  <-- recommended\n")
+            f.write("#                    #   zoom 18 -> ~0.6 m/px  (~41x41  tiles)\n")
+            f.write("# num_threads = 8    # Concurrent threads for tile fetching (8 is a safe default;\n")
+            f.write("#                    # 16-32 can help on fast connections for cold-cache runs)\n")
             f.write("\n")
             f.write("# Manual GCP configuration (optional)\n")
             f.write("# If provided, these GCPs will be used as a prior for matching\n")
@@ -194,18 +230,33 @@ class Configuration:
             f.write("\n")
             f.write("# Auto-match algorithm settings (Edge-based GA alignment)\n")
             f.write("[auto_match]\n")
-            f.write("edge_dilation = 3\n")
+            f.write("sobel_kernel_size  = 3  # Sobel kernel size (1, 3, 5, or 7)\n")
+            f.write("sobel_threshold    = 0.0  # Hard threshold on edge magnitude (0.0=off, 0.0-1.0 scale)\n")
+            f.write("test_pre_blur      = 0  # Gaussian blur before Sobel for test image (0=off, try 5-15 for high-res imagery)\n")
+            f.write("test_dilation      = 3  # Morphological dilation iterations for test edges (0 = disabled)\n")
+            f.write("ref_pre_blur       = 0  # Gaussian blur before Sobel for reference chip (0=off)\n")
+            f.write("ref_dilation       = 3  # Morphological dilation iterations for reference edges (0 = disabled)\n")
+            f.write("gcp_weight         = 0.0  # GCP score weight in GA fitness (0.0=edges only, recommended)\n")
             f.write("ga_popsize = 15\n")
             f.write("ga_maxiter = 200\n")
             f.write("ga_recombination = 0.7\n")
             f.write("ga_mutation = 0.7\n")
+            f.write("ga_max_edge_dim = 2048  # Max edge image dimension for GA (higher=more detail, slower)\n")
             f.write("search_bounds_px = 50.0\n")
             f.write("\n")
             f.write("# Debug settings for saving intermediate results\n")
             f.write("[auto_match.debug]\n")
-            f.write("save_sobel_images = false  # Set to true to save Sobel edge images\n")
+            f.write("save_test_sobel = false          # Save test image Sobel edges\n")
+            f.write("save_ref_sobel = false           # Save reference chip Sobel edges\n")
             f.write("output_directory = \"temp/debug\"  # Directory for debug output\n")
             f.write("save_intermediate_steps = false  # Save additional intermediate steps\n")
+            f.write("\n")
+            f.write("# Output configuration\n")
+            f.write("[output]\n")
+            f.write("# model_output_path    = \"temp/fitted_model.json\"    # Path to save the fitted model\n")
+            f.write("# ref_chip_output_path = \"temp/reference_chip.tif\"   # Stitched reference chip as GeoTiff\n")
+            f.write("# visualization_path   = \"temp/results.html\"         # Path to save visualization\n")
+            f.write("# output_model_type    = \"affine\"                     # Model type to output: 'affine' or 'rpc'\n")
 
         print(f"Sample config written to: {pathname}")
 
@@ -281,6 +332,8 @@ class Configuration:
                     'lon': ref_data.get('center_lon'),
                 } if 'center_lat' in ref_data else None,
                 zoom=ref_data.get('zoom'),
+                max_zoom=ref_data.get('max_zoom', 17),
+                num_threads=ref_data.get('num_threads', 8),
             )
         else:
             reference = Reference_Config(
@@ -297,23 +350,28 @@ class Configuration:
         # Parse auto-match settings
         auto_match_data = cfg_args['auto_match']
 
-        # Parse edge alignment settings
-        from pointy.core.auto_match import Debug_Settings
-
         # Parse debug settings
         debug_data = auto_match_data.get('debug', {})
         debug_settings = Debug_Settings(
-            save_sobel_images=debug_data.get('save_sobel_images', False),
+            save_test_sobel=debug_data.get('save_test_sobel', False),
+            save_ref_sobel=debug_data.get('save_ref_sobel', False),
             output_directory=debug_data.get('output_directory', 'temp/debug'),
             save_intermediate_steps=debug_data.get('save_intermediate_steps', False),
         )
 
         edge_settings = Edge_Alignment_Settings(
-            edge_dilation=auto_match_data.get('edge_dilation', 3),
+            sobel_kernel_size=auto_match_data.get('sobel_kernel_size', 3),
+            sobel_threshold=float(auto_match_data.get('sobel_threshold', 0.0)),
+            test_pre_blur=auto_match_data.get('test_pre_blur', 0),
+            test_dilation=auto_match_data.get('test_dilation', 3),
+            ref_pre_blur=auto_match_data.get('ref_pre_blur', 0),
+            ref_dilation=auto_match_data.get('ref_dilation', 3),
+            gcp_weight=float(auto_match_data.get('gcp_weight', 0.0)),
             ga_popsize=auto_match_data.get('ga_popsize', 15),
             ga_maxiter=auto_match_data.get('ga_maxiter', 200),
             ga_recombination=auto_match_data.get('ga_recombination', 0.7),
             ga_mutation=auto_match_data.get('ga_mutation', 0.7),
+            ga_max_edge_dim=auto_match_data.get('ga_max_edge_dim', 2048),
             search_bounds_px=auto_match_data.get('search_bounds_px', 50.0),
             debug=debug_settings,
         )
@@ -324,6 +382,15 @@ class Configuration:
             use_manual_prior=gcps.file is not None,
         )
 
+        # Parse output settings
+        output_data = cfg_args.get('output', {})
+        output = Output_Config(
+            model_output_path=output_data.get('model_output_path'),
+            ref_chip_output_path=output_data.get('ref_chip_output_path'),
+            visualization_path=output_data.get('visualization_path'),
+            output_model_type=output_data.get('output_model_type', 'affine'),
+        )
+
         return cls(
             cmd_args=cmd_args,
             cfg_args=cfg_args,
@@ -331,6 +398,7 @@ class Configuration:
             reference=reference,
             gcps=gcps,
             auto_match=auto_match,
+            output=output,
         )
 
     def validate(self) -> bool:

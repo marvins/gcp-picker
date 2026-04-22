@@ -17,17 +17,25 @@ Tile capture utilities for web-based imagery services.
 """
 
 # Python Standard Libraries
+import hashlib
+import json
 import logging
-from typing import Any
+import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from io import BytesIO
+from pathlib import Path
 
 # Third-Party Libraries
 import numpy as np
 import requests
 from PIL import Image
-from io import BytesIO
+from tqdm import tqdm
 
 # Project Libraries
 from pointy.core.config_manager import Config_Manager
+
+DEFAULT_TILE_CACHE_DIR = Path('temp/tile_cache')
+DEFAULT_MAX_ZOOM = 16
 
 
 def estimate_gsd(image_shape: tuple[int, int], bounds: dict[str, float]) -> dict[str, float]:
@@ -102,9 +110,73 @@ def calculate_tile_grid_radius(center_tx: int, center_ty: int, zoom: int, target
     return max(x_radius, y_radius, 1)
 
 
+def _bounds_cache_key(service_name: str, zoom: int, target_bounds: dict[str, float], grid_radius: int) -> str:
+    """Compute a stable cache key from the request parameters.
+
+    Args:
+        service_name: Imagery service name.
+        zoom: Zoom level.
+        target_bounds: Geographic bounds dict.
+        grid_radius: Tile grid radius used.
+
+    Returns:
+        Hex digest string suitable for use as a filename.
+    """
+    payload = json.dumps({
+        'service': service_name,
+        'zoom': zoom,
+        'bounds': target_bounds,
+        'radius': grid_radius,
+    }, sort_keys=True)
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def clear_tile_cache(cache_dir: Path = DEFAULT_TILE_CACHE_DIR) -> None:
+    """Remove all cached tiles and stitched images.
+
+    Args:
+        cache_dir: Root cache directory to wipe.
+    """
+    logger = logging.getLogger(__name__)
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        logger.info(f"Tile cache cleared: {cache_dir}")
+    else:
+        logger.info(f"Tile cache already empty: {cache_dir}")
+
+
+def _fetch_tile(url: str, tile_cache_path: Path) -> np.ndarray:
+    """Fetch a single tile from the network or disk cache.
+
+    Args:
+        url: Full tile URL.
+        tile_cache_path: Path where the tile PNG should be cached.
+
+    Returns:
+        Tile as an (H, W, C) uint8 numpy array.
+    """
+    if tile_cache_path.exists():
+        return np.array(Image.open(tile_cache_path))
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    img = Image.open(BytesIO(response.content)).convert('RGB')
+
+    tile_cache_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(tile_cache_path)
+    return np.array(img)
+
+
 def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom: int,
-                  tile_size: int = 256, target_bounds: dict[str, float] | None = None) -> tuple[np.ndarray, dict[str, float]]:
-    """Capture tiles from web imagery service.
+                  tile_size: int = 256, target_bounds: dict[str, float] | None = None,
+                  cache_dir: Path = DEFAULT_TILE_CACHE_DIR,
+                  max_zoom: int = DEFAULT_MAX_ZOOM,
+                  num_threads: int = 8) -> tuple[np.ndarray, dict[str, float]]:
+    """Capture tiles from web imagery service, using a local disk cache.
+
+    Individual tiles are cached under ``cache_dir/<service>/<zoom>/<x>/<y>.png``.
+    The fully stitched image is cached under ``cache_dir/<service>/<hash>.npz``
+    and returned immediately on subsequent calls with identical parameters.
 
     Args:
         service_name: Name of the imagery service from config.
@@ -114,6 +186,10 @@ def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom:
         tile_size: Size of each tile in pixels (default 256).
         target_bounds: Optional geographic bounds to cover {sw_lat, sw_lon, ne_lat, ne_lon}.
                       If provided, will expand tile grid to ensure coverage.
+        cache_dir: Root directory for tile and stitched image cache.
+        max_zoom: Maximum allowed zoom level (default 16). Raise to fetch higher
+                  resolution tiles at the cost of more network requests.
+        num_threads: Number of threads for concurrent tile fetching (default 8).
 
     Returns:
         tuple[np.ndarray, dict[str, float]]: (captured image array, bounds dict)
@@ -128,15 +204,12 @@ def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom:
     logger.info(f"Capturing tiles from {service_name} at zoom {zoom}")
 
     # Cap zoom level to prevent excessive tile fetching
-    max_zoom = 16
     if zoom > max_zoom:
         logger.warning(f"Zoom {zoom} exceeds max {max_zoom}, capping to prevent excessive tile requests")
         zoom = max_zoom
 
     # Convert lat/lon to tile coordinates (after zoom cap)
     n = 2 ** zoom
-    # x is longitude (east-west), y is latitude (north-south)
-    # Standard Web Mercator tile formulas
     x = int((center_lon + 180) / 360 * n)
     lat_rad = np.radians(center_lat)
     y = int((1 - np.log(np.tan(lat_rad) + 1 / np.cos(lat_rad)) / np.pi) / 2 * n)
@@ -144,34 +217,63 @@ def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom:
 
     # Determine tile grid size
     if target_bounds is not None:
-        # Calculate required tile grid to cover target bounds
         grid_radius = calculate_tile_grid_radius(x, y, zoom, target_bounds)
         logger.info(f"Target bounds: {target_bounds}")
         logger.info(f"Using tile grid radius {grid_radius} ({2*grid_radius+1}x{2*grid_radius+1} tiles)")
     else:
-        # Default 3x3 grid around center
         grid_radius = 1
 
-    # Capture tiles in expanding grid around center
+    # Check stitched image cache first
+    cache_key = _bounds_cache_key(service_name, zoom, target_bounds or {}, grid_radius)
+    stitched_cache_path = cache_dir / service_name / f"{cache_key}.npz"
+    bounds_cache_path = cache_dir / service_name / f"{cache_key}.json"
+
+    if stitched_cache_path.exists() and bounds_cache_path.exists():
+        logger.info(f"Stitched image cache hit: {stitched_cache_path}")
+        stitched = np.load(stitched_cache_path)['img']
+        with open(bounds_cache_path) as f:
+            bounds = json.load(f)
+        logger.info(f"Loaded cached image shape: {stitched.shape}, bounds: {bounds}")
+        return stitched, bounds
+
+    # Fetch individual tiles (with per-tile cache)
+    tile_cache_base = cache_dir / service_name / str(zoom)
+    tile_coords = [
+        (dx, dy)
+        for dx in range(-grid_radius, grid_radius + 1)
+        for dy in range(-grid_radius, grid_radius + 1)
+    ]
+    total_tiles = len(tile_coords)
+    cached_count = 0
+
+    def _fetch(dx: int, dy: int) -> tuple[int, int, np.ndarray, bool]:
+        tx = x + dx
+        ty = y + dy
+        url = service.url
+        url = url.replace('{z}', str(zoom))
+        url = url.replace('{x}', str(tx))
+        url = url.replace('{y}', str(ty))
+        url = url.replace('{s}', 'a')
+        tile_cache_path = tile_cache_base / str(tx) / f"{ty}.png"
+        was_cached = tile_cache_path.exists()
+        return dx, dy, _fetch_tile(url, tile_cache_path), was_cached
+
     tiles = []
-    for dx in range(-grid_radius, grid_radius + 1):
-        for dy in range(-grid_radius, grid_radius + 1):
-            tx = x + dx
-            ty = y + dy
+    with tqdm(total=total_tiles, desc=f'Tiles z{zoom}', unit='tile', leave=False) as pbar:
+        with ThreadPoolExecutor(max_workers=num_threads) as pool:
+            futures = {pool.submit(_fetch, dx, dy): (dx, dy) for dx, dy in tile_coords}
+            for future in as_completed(futures):
+                dx, dy, tile_arr, was_cached = future.result()
+                tiles.append((dx, dy, tile_arr))
+                if was_cached:
+                    cached_count += 1
+                pbar.set_postfix(cached=cached_count, network=len(tiles) - cached_count, refresh=False)
+                pbar.update(1)
 
-            # URL template replacement
-            url = service.url
-            url = url.replace('{z}', str(zoom))
-            url = url.replace('{x}', str(tx))  # x is longitude (east-west)
-            url = url.replace('{y}', str(ty))  # y is latitude (north-south)
-            url = url.replace('{s}', 'a')  # Subdomain
-
-            logger.debug(f"Fetching tile: {url}")
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-
-            img = Image.open(BytesIO(response.content))
-            tiles.append((dx, dy, np.array(img)))
+    logger.info(
+        f"Tiles fetched: {total_tiles} total, "
+        f"{cached_count} from cache, {total_tiles - cached_count} from network"
+    )
 
     # Stitch tiles together
     # Sort by dy (row) then dx (col)
@@ -210,6 +312,12 @@ def capture_tiles(service_name: str, center_lat: float, center_lon: float, zoom:
         'ne_lon': ne_lon,
     }
 
+    # Save stitched image and bounds to cache
+    stitched_cache_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(stitched_cache_path, img=stitched)
+    with open(bounds_cache_path, 'w') as f:
+        json.dump(bounds, f)
+    logger.info(f"Cached stitched image to {stitched_cache_path}")
     logger.info(f"Captured image shape: {stitched.shape}, bounds: {bounds}")
 
     return stitched, bounds

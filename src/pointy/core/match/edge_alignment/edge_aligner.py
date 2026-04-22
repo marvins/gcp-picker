@@ -1,4 +1,4 @@
-#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#*
+#**************************** INTELLECTUAL PROPERTY RIGHTS ****************************#
 #*                                                                                    *#
 #*                           Copyright (c) 2026 Terminus LLC                          *#
 #*                                                                                    *#
@@ -23,7 +23,7 @@ then extracts synthetic GCPs from the converged transform.
 import logging
 import os
 import time
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, Tuple
 
 # Third-Party Libraries
 import cv2
@@ -41,6 +41,60 @@ from tmns.geo.proj.affine import Affine
 from tmns.geo.proj.base import Projector
 
 
+def bootstrap_affine_from_projector(prior: Projector, w_test: int, h_test: int) -> Affine:
+    """Fit an Affine projector from a 5x5 grid of samples through any prior projector.
+
+    Use this when the GA requires an Affine but the available model is TPS or RPC.
+    The least-squares fit over 25 points gives a much better approximation than
+    fitting to 4 corners alone.
+    """
+    N = 5
+    gcps = [
+        (Pixel(x_px=int(c / (N - 1) * (w_test - 1)),
+               y_px=int(r / (N - 1) * (h_test - 1))),
+         prior.pixel_to_world(Pixel(x_px=int(c / (N - 1) * (w_test - 1)),
+                                    y_px=int(r / (N - 1) * (h_test - 1)))))
+        for r in range(N) for c in range(N)
+    ]
+    affine = Affine()
+    affine.solve_from_gcps(gcps)
+    affine.update_model(
+        transform_matrix=affine._transform_matrix,
+        image_size=(w_test, h_test),
+        image_bounds=(0, 0, w_test - 1, h_test - 1),
+    )
+    return affine
+
+
+def cold_start_affine_projector(w_test: int, h_test: int, w_ref: int, h_ref: int,
+                                ref_geo_transform: Callable[[float, float], Tuple[float, float]]) -> Affine:
+    """Initialize an Affine projector when no prior model is available.
+
+    Maps the test image pixel grid proportionally across the full ref chip geo
+    extent.  Gives the GA a neutral starting point that covers the full search
+    region.  For RPC cold-starts, the resulting Affine params can seed the
+    rational polynomial bias/scale offsets.
+    """
+    N = 5
+    gcps = []
+    for r in range(N):
+        for c in range(N):
+            tx = int(c / (N - 1) * (w_test - 1))
+            ty = int(r / (N - 1) * (h_test - 1))
+            lon, lat = ref_geo_transform(c / (N - 1) * (w_ref - 1),
+                                         r / (N - 1) * (h_ref - 1))
+            gcps.append((Pixel(x_px=tx, y_px=ty),
+                         Geographic(latitude_deg=lat, longitude_deg=lon)))
+    affine = Affine()
+    affine.solve_from_gcps(gcps)
+    affine.update_model(
+        transform_matrix=affine._transform_matrix,
+        image_size=(w_test, h_test),
+        image_bounds=(0, 0, w_test - 1, h_test - 1),
+    )
+    return affine
+
+
 class Edge_Aligner:
     """Edge-based alignment using Sobel edges + genetic algorithm.
 
@@ -51,42 +105,31 @@ class Edge_Aligner:
         4. Solve RPC model if enough GCPs available (≥9)
     """
 
-    def __init__(self, settings: Edge_Alignment_Settings, initial_model: Projector | None = None):
+    def __init__(self, settings: Edge_Alignment_Settings, projector: Projector | None = None):
         self._settings = settings
-        self._initial_model = initial_model
-        self._edge_detector = Sobel_Edges(Sobel_Edge_Settings(
-            dilation=settings.edge_dilation
+        self._projector: Projector | None = projector
+        self._test_edge_detector = Sobel_Edges(Sobel_Edge_Settings(
+            kernel_size=settings.sobel_kernel_size,
+            dilation=settings.test_dilation,
+            threshold=settings.sobel_threshold,
+            pre_blur_kernel=settings.test_pre_blur,
+        ))
+        self._ref_edge_detector = Sobel_Edges(Sobel_Edge_Settings(
+            kernel_size=settings.sobel_kernel_size,
+            dilation=settings.ref_dilation,
+            threshold=settings.sobel_threshold,
+            pre_blur_kernel=settings.ref_pre_blur,
         ))
         self._optimizer = GA_Optimizer(GA_Settings(
             popsize=settings.ga_popsize,
             maxiter=settings.ga_maxiter,
             mutation=settings.ga_mutation,
             recombination=settings.ga_recombination,
-            workers=1,  # Disable multiprocessing to avoid pickling issues
+            max_edge_dim=settings.ga_max_edge_dim,
+            workers=1,
             polish=True,
         ))
-        self._projector: Projector | None = None  # Projector instance (RPC, Affine, etc.)
 
-    def _extract_initial_affine_params(self) -> np.ndarray | None:
-        """Extract initial affine parameters from the initial model if available.
-
-        Returns:
-            Initial parameters [tx, ty, sx, sxy, syx, sy] or None.
-        """
-        if self._initial_model is None:
-            return None
-
-        # Only support Affine models for warm-starting
-        if not isinstance(self._initial_model, Affine):
-            logging.info('Edge_Aligner: Initial model is not Affine, skipping warm-start')
-            return None
-
-        if self._initial_model._transform_matrix is None:
-            return None
-
-        params = self._initial_model.to_params()
-        logging.info(f'Edge_Aligner: Warm-starting with initial params: tx={params[2]:.6g}, ty={params[5]:.6g}, sx={params[0]:.6g}, sy={params[4]:.6g}')
-        return params
 
     def _save_debug_image(self, image: np.ndarray, filename: str, description: str) -> None:
         """Save debug image to disk if debug settings are enabled.
@@ -96,7 +139,7 @@ class Edge_Aligner:
             filename: Base filename (without extension).
             description: Description for logging.
         """
-        if not self._settings.debug.save_sobel_images:
+        if not self._settings.debug.save_test_sobel and not self._settings.debug.save_ref_sobel:
             return
 
         try:
@@ -106,13 +149,9 @@ class Edge_Aligner:
             # Construct full path
             output_path = os.path.join(self._settings.debug.output_directory, f"{filename}.png")
 
-            # Convert image to uint8 if needed
+            # Convert to uint8 for PNG output
             if image.dtype != np.uint8:
-                if image.max() <= 1.0:
-                    # Assume normalized float image
-                    image = (image * 255).astype(np.uint8)
-                else:
-                    image = np.clip(image, 0, 255).astype(np.uint8)
+                image = (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
 
             # Save image
             cv2.imwrite(output_path, image)
@@ -144,11 +183,10 @@ class Edge_Aligner:
             ``Match_Result`` with synthetic GCPs extracted from the transform.
             If return_refined_model=True, includes refined model and solver metrics.
         """
-        # Store initial model if provided (temporarily override constructor model)
-        original_initial_model = self._initial_model
+        original_projector = self._projector
         if initial_model is not None:
-            self._initial_model = initial_model
-            logging.info(f'Edge_Aligner: Using provided initial model: {type(initial_model).__name__}')
+            self._projector = initial_model
+            logging.info(f'Edge_Aligner: Using provided projector: {type(initial_model).__name__}')
 
         t0 = time.perf_counter()
         result = Match_Result()
@@ -160,32 +198,45 @@ class Edge_Aligner:
 
         # Stage 1: Edge detection
         logging.info('Edge_Aligner: detecting Sobel edges')
-        test_edges = self._edge_detector.detect(test_image)
-        ref_edges = self._edge_detector.detect(ref_chip)
+        test_edges = self._test_edge_detector.detect(test_image)
+        ref_edges = self._ref_edge_detector.detect(ref_chip)
 
         # Save debug images if enabled
-        self._save_debug_image(test_edges, "test_edges", "Test image Sobel edges")
-        self._save_debug_image(ref_edges, "ref_edges", "Reference image Sobel edges")
+        if self._settings.debug.save_test_sobel:
+            self._save_debug_image(test_edges, "test_edges", "Test image Sobel edges")
+        if self._settings.debug.save_ref_sobel:
+            self._save_debug_image(ref_edges, "ref_edges", "Reference image Sobel edges")
 
 
         # Stage 2: GA optimization with model parameters
+        if self._projector is None:
+            raise ValueError(
+                'Edge_Aligner.align() requires a projector. '
+                'Use bootstrap_affine_from_projector() or cold_start_affine_projector() '
+                'to build one before calling align().'
+            )
+        logging.info(f'Edge_Aligner: optimizing with {type(self._projector).__name__} projector')
+
+        # NOTE: Cropping ref_edges based on the initial model is unreliable since
+        # that model is what we're trying to solve for. Each fitness call in the GA
+        # is responsible for computing its own per-parameter-set crop window: project
+        # the test corners through the trial model, determine the ref sub-view, warp
+        # the test into that sub-view, and compare same-size edge images there.
         def cb(params, score):
             if progress_callback:
                 progress_callback(score)
 
-        # Set the active projector from initial model for optimization
-        if self._initial_model is not None:
-            self._projector = self._initial_model
-        elif self._projector is None:
-            raise ValueError("No projector model available for optimization")
+        init_params = self._projector.to_params()
 
         ga_result = self._optimizer.optimize_model(
             test_edges, ref_edges,
             model=self._projector,
             bounds_px=self._settings.search_bounds_px,
             callback=cb,
-            init_params=self._extract_initial_affine_params(),
+            init_params=init_params,
             manual_gcps=manual_gcps,
+            gcp_weight=self._settings.gcp_weight,
+            ref_geo_transform=ref_geo_transform,
         )
 
         if not ga_result.success:
@@ -194,7 +245,14 @@ class Edge_Aligner:
             result.elapsed_sec = time.perf_counter() - t0
             return result
 
-        logging.info(f'Edge_Aligner: converged with score={ga_result.score:.4f}')
+        edge_w = 1.0 - ga_result.gcp_weight
+        logging.info(
+            f'Edge_Aligner: GA converged\n'
+            f'  combined score : {ga_result.score:.4f}\n'
+            f'  edge  score    : {ga_result.edge_score:.4f}  (weight={edge_w:.2f})\n'
+            f'  gcp   score    : {ga_result.gcp_score:.4f}  (weight={ga_result.gcp_weight:.2f})'
+            + (f'  [{len(manual_gcps)} GCPs]' if manual_gcps else '  [no GCPs]')
+        )
 
         # Update the projector with the optimized model
         if ga_result.optimized_model is not None:
@@ -220,7 +278,7 @@ class Edge_Aligner:
 
         # Add model refinement information if requested
         if return_refined_model:
-            if result.success and self._projector is not None:
+            if ga_result.success and self._projector is not None:
                 # Store the refined model as a custom attribute
                 result.refined_model = self._projector
                 result.solver_iterations = getattr(self._optimizer, '_last_iterations', 0)
@@ -230,7 +288,7 @@ class Edge_Aligner:
                 result.rmse = ga_result.score if hasattr(ga_result, 'score') else 0.0
                 result.error_message = ''
             else:
-                result.refined_model = initial_model or original_initial_model  # Return original if refinement failed
+                result.refined_model = initial_model or original_projector
                 result.solver_iterations = 0
                 result.solver_converged = False
                 result.solver_fitness = 0.0
@@ -238,12 +296,12 @@ class Edge_Aligner:
                 result.rmse = 0.0
                 result.error_message = result.error
 
-        # Restore original initial model
-        self._initial_model = original_initial_model
+        self._projector = original_projector
 
         logging.info(f'Edge_Aligner: extracted {len(gcp_pixels)} synthetic GCPs in {result.elapsed_sec:.2f}s')
 
         return result
+
 
 
     def _extract_gcps_from_model(self, model: Projector, test_size: tuple[int, int],

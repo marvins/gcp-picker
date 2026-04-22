@@ -16,13 +16,15 @@
 Initialization utilities for auto-gcp-tester.
 """
 
+# Python Standard Libraries
 import logging
 from typing import Callable
 
+# Third-Party Libraries
 import numpy as np
 import rasterio
-from rasterio.transform import from_bounds
 
+# Project Libraries
 from pointy.apps.auto_model_solver.config import Configuration
 from pointy.apps.auto_model_solver.tile_capture import calculate_zoom_for_resolution, capture_tiles
 
@@ -91,7 +93,9 @@ def load_reference_imagery(config: Configuration, logger: logging.Logger, ortho_
             center_lat=config.reference.center['lat'],
             center_lon=config.reference.center['lon'],
             zoom=zoom,
-            target_bounds=target_bounds
+            target_bounds=target_bounds,
+            max_zoom=config.reference.max_zoom,
+            num_threads=config.reference.num_threads,
         )
         logger.info(f"Reference chip shape: {ref_chip.shape}, dtype: {ref_chip.dtype}")
 

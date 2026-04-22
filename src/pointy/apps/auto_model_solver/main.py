@@ -19,6 +19,7 @@ Auto Model Solver CLI for Sobel edge-based alignment using genetic algorithms.
 # without the GUI, useful for debugging and parameter tuning.
 
 # Python Standard Libraries
+import json
 import logging
 import sys
 import time
@@ -37,12 +38,14 @@ from pointy.apps.auto_model_solver.config import Configuration
 from pointy.apps.auto_model_solver.init_utilities import load_test_image, load_reference_imagery
 from pointy.apps.auto_model_solver.model_solver_result import Model_Solver_Result
 from pointy.apps.auto_model_solver.plot import visualize_results
-from pointy.apps.auto_model_solver.tile_capture import estimate_gsd
-from pointy.core.gcp import GCP
-from pointy.core.match.edge_alignment.edge_aligner import Edge_Aligner
+from pointy.apps.auto_model_solver.tile_capture import clear_tile_cache, estimate_gsd
+from pointy.core.match.edge_alignment.edge_aligner import (
+    Edge_Aligner,
+    bootstrap_affine_from_projector,
+    cold_start_affine_projector,
+)
 from pointy.core.ortho_model_persistence import apply_model_to_projector, load_ortho_model
 from pointy.core.transformation import warp_image
-from tmns.geo.coord import Geographic, Pixel
 from tmns.geo.coord.crs import CRS
 from tmns.geo.proj import Transformation_Type
 from tmns.geo.proj.factory import create_projector
@@ -89,6 +92,44 @@ def generate_geotiff_from_model(image: np.ndarray, model: Any, output_path: Path
             dst.write(warped, 1)
 
 
+def save_reference_chip_geotiff(ref_chip: np.ndarray, bounds: dict[str, float],
+                                output_path: str, logger: logging.Logger) -> None:
+    """Save the stitched reference chip as a georeferenced GeoTiff.
+
+    Args:
+        ref_chip: Reference chip image array (H, W, C) uint8.
+        bounds: Geographic bounds {sw_lat, sw_lon, ne_lat, ne_lon}.
+        output_path: Destination path for the GeoTiff.
+        logger: Logger instance.
+    """
+    try:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        h, w = ref_chip.shape[:2]
+        img_rgb = ref_chip  # Tiles from PIL are already RGB; no conversion needed
+        with rasterio.open(
+            output_path,
+            'w',
+            driver='GTiff',
+            height=h,
+            width=w,
+            count=img_rgb.shape[2] if img_rgb.ndim == 3 else 1,
+            dtype=img_rgb.dtype,
+            crs='EPSG:4326',
+            transform=from_bounds(
+                bounds['sw_lon'], bounds['sw_lat'],
+                bounds['ne_lon'], bounds['ne_lat'],
+                w, h,
+            ),
+        ) as dst:
+            if img_rgb.ndim == 3:
+                dst.write(img_rgb.transpose(2, 0, 1))
+            else:
+                dst.write(img_rgb, 1)
+        logger.info(f"Reference chip GeoTiff saved to {output_path}")
+    except Exception as e:
+        logger.error(f"Failed to save reference chip GeoTiff: {e}")
+
+
 def setup_logging(verbose: bool = False):
     """Configure logging for the application.
 
@@ -105,12 +146,13 @@ def setup_logging(verbose: bool = False):
         stream=sys.stdout
     )
 
-    # Suppress verbose rasterio.env debug messages
+    # Suppress verbose third-party debug messages
     logging.getLogger('rasterio.env').setLevel(logging.WARNING)
     logging.getLogger('rasterio._base').setLevel(logging.WARNING)
     logging.getLogger('rasterio._env').setLevel(logging.WARNING)
     logging.getLogger('rasterio._io').setLevel(logging.WARNING)
     logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+    logging.getLogger('PIL').setLevel(logging.WARNING)
 
     return logging.getLogger(__name__)
 
@@ -129,29 +171,38 @@ def main() -> int:
     Returns:
         int: Exit code (0 for success, 1 for failure).
     """
-    config = Configuration.parse()
 
+    # Parse the configuration and setup the logger
+    config = Configuration.parse()
     logger = setup_logging(config.cmd_args.verbose)
+
+    # Let the user clear the tile cache if they want to
+    if getattr(config.cmd_args, 'clear_cache', False):
+        clear_tile_cache()
+        logger.info('Tile cache cleared.')
 
     if not config.validate():
         return 1
 
-    logger.info(f"Configuration loaded from: {config.cmd_args.config_file}")
-    logger.info(f"Test image: {config.test_image.path}")
-    logger.info(f"Reference: {config.reference.type}")
-
-    # Check test image for ortho sidecar
-    test_bounds = config.check_ortho_sidecar(config.test_image.path)
-    if test_bounds:
-        logger.info(f"Test image has ortho sidecar with bounds: {test_bounds}")
-
-        # Estimate GSD from test image
-        gsd_info = estimate_gsd(test_image.shape, test_bounds)
-        logger.info(f"Estimated test image GSD: {gsd_info['gsd_avg']:.3f} m/pixel (lat: {gsd_info['gsd_lat']:.3f}, lon: {gsd_info['gsd_lon']:.3f})")
+    logger.info(
+        f"Configuration loaded:\n"
+        f"  config_file : {config.cmd_args.config_file}\n"
+        f"  test_image  : {config.test_image.path}\n"
+        f"  reference   : {config.reference.type}"
+    )
 
     try:
         # Load test image
         test_image = load_test_image(config, logger)
+
+        # Check test image for ortho sidecar
+        test_bounds = config.check_ortho_sidecar(config.test_image.path)
+        if test_bounds:
+            logger.info(f"Test image has ortho sidecar with bounds: {test_bounds}")
+
+            # Estimate GSD from test image
+            gsd_info = estimate_gsd(test_image.shape, test_bounds)
+            logger.info(f"Estimated test image GSD: {gsd_info['gsd_avg']:.3f} m/pixel (lat: {gsd_info['gsd_lat']:.3f}, lon: {gsd_info['gsd_lon']:.3f})")
 
         # Load full Ortho model from sidecar
         ortho_model = None
@@ -173,6 +224,9 @@ def main() -> int:
         # Load reference imagery
         ref_chip, bounds, geo_transform = load_reference_imagery(config, logger, ortho_model_bounds)
 
+        if config.output.ref_chip_output_path:
+            save_reference_chip_geotiff(ref_chip, bounds, config.output.ref_chip_output_path, logger)
+
         # Load manual GCPs
         gcp_proc = config.load_manual_gcps()
 
@@ -183,8 +237,20 @@ def main() -> int:
         logger.info("Running auto-model solver...")
         logger.info(f"Settings: {config.auto_match.to_log_string()}")
 
-        # Create edge aligner
-        aligner = Edge_Aligner(config.auto_match.edge_settings)
+        # Build the initial projector for the GA before creating the aligner.
+        # If a prior model exists (TPS, RPC), bootstrap an Affine from it.
+        # Otherwise cold-start from the ref chip geo extent.
+        h_test, w_test = test_image.shape[:2]
+        h_ref, w_ref = ref_chip.shape[:2]
+        if ortho_model is not None:
+            logger.info(f'Bootstrapping Affine from {type(ortho_model).__name__} prior model')
+            initial_projector = bootstrap_affine_from_projector(ortho_model, w_test, h_test)
+        else:
+            logger.info('No prior model — cold-starting Affine from ref geo extent')
+            initial_projector = cold_start_affine_projector(w_test, h_test, w_ref, h_ref, geo_transform)
+
+        # Create edge aligner with the pre-built projector
+        aligner = Edge_Aligner(config.auto_match.edge_settings, projector=initial_projector)
 
         # Pass manual GCPs directly
         if manual_gcps:
@@ -195,7 +261,6 @@ def main() -> int:
         result = aligner.align(
             test_image, ref_chip, geo_transform,
             manual_gcps=manual_gcps,
-            initial_model=ortho_model,
             return_refined_model=True
         )
         elapsed_time = time.time() - start_time
@@ -225,15 +290,9 @@ def main() -> int:
         logger.info(solver_result.to_log_string())
 
         # Save refined model if configured
-        if hasattr(config, 'output') and config.output.get('model_output_path'):
-            save_model_to_file(solver_result.refined_model, config.output['model_output_path'], logger)
-            logger.info(f"Saved refined model to {config.output['model_output_path']}")
-
-        # Save results if configured
-        if hasattr(config, 'output') and config.output.get('gcp_output_path'):
-            save_gcps_to_file(result.candidate_pixels, result.candidate_geos,
-                             config.output['gcp_output_path'], logger)
-            logger.info(f"Saved GCPs to {config.output['gcp_output_path']}")
+        if config.output.model_output_path:
+            save_model_to_file(solver_result.refined_model, config.output.model_output_path, logger)
+            logger.info(f"Saved refined model to {config.output.model_output_path}")
 
         # Print summary table
         summary = (
@@ -297,13 +356,14 @@ def save_model_to_file(model: Any, output_path: str, logger: logging.Logger) -> 
         logger: Logger instance.
     """
     try:
-        import json
-        from pointy.core.ortho_model_persistence import save_ortho_model
-
-        # Use the ortho model persistence to save the model
-        save_ortho_model(model, output_path)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        model_data = {
+            'model_type': model.transformation_type.value,
+            'model_data': model.serialize_model_data(),
+        }
+        with open(output_path, 'w') as f:
+            json.dump(model_data, f, indent=2)
         logger.info(f"Model saved to {output_path}")
-
     except Exception as e:
         logger.error(f"Failed to save model: {e}")
 

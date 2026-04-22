@@ -59,6 +59,11 @@ from pointy.core.terrain import elevation
 - **Rationale**: Improves readability, makes dependencies clear, and follows Python best practices
 - **CRITICAL REMINDER**: NEVER use inline imports inside functions/methods. All imports MUST be at the top of the file in the proper section.
 
+# Logging Style
+
+- **Consolidate related state into a single multi-line log call** rather than multiple sequential `logger.*` calls. Use concatenated f-strings with `\n` and aligned key/value pairs.
+- **Rationale**: Reduces log noise and groups related context under one timestamp/prefix.
+
 #  Typing Hints
 
 - Use `|` for union types (Python 3.10+):

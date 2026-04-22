@@ -18,7 +18,6 @@ Model Solver Result - Results from the auto model solver.
 
 from dataclasses import dataclass
 from typing import Any
-import numpy as np
 
 
 @dataclass
