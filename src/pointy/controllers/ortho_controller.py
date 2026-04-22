@@ -339,54 +339,54 @@ class Ortho_Controller:
             tools_panel.set_sidecar_status(False)
             return
 
-        try:
-            sidecar = load_ortho_model(Path(image_path))
-            if sidecar is None:
-                tools_panel.set_sidecar_status(False)
-                return
-
-            # Verify GCP IDs match (optional - could allow partial matches)
-            current_gcp_ids = set(g.id for g in self._gcp_proc.get_gcps())
-            sidecar_gcp_ids = set(sidecar.metadata.gcp_ids)
-
-            if not current_gcp_ids.issuperset(sidecar_gcp_ids):
-                logging.warning(f'Sidecar GCP IDs {sidecar_gcp_ids} not all present in current GCPs {current_gcp_ids}')
-                tools_panel.set_sidecar_status(False)
-                return
-
-            # Create appropriate projector type using factory
-            model_type = Transformation_Type(sidecar.metadata.model_type)
-            projector = create_projector(model_type)
-
-            # Apply model data to projector
-            apply_model_to_projector(projector, sidecar.model_data, sidecar.metadata.model_type)
-
-            # Set the projector
-            self._set_projector(projector)
-
-            # Compute residuals using loaded projector and current GCPs
-            residuals = []
-            for gcp in self._gcp_proc.get_gcps():
-                if gcp.id in sidecar_gcp_ids:
-                    pred = projector.world_to_pixel(gcp.geographic)
-                    rms = ((pred.x_px - gcp.pixel.x_px) ** 2 + (pred.y_px - gcp.pixel.y_px) ** 2) ** 0.5
-                    residuals.append(GCP_Residual(
-                        gcp_id=gcp.id,
-                        actual_pixel=gcp.pixel,
-                        predicted_pixel=pred,
-                        rms_px=rms
-                    ))
-
-            # Calculate overall RMSE
-            rmse = np.sqrt(np.mean([r.rms_px ** 2 for r in residuals])) if residuals else None
-
-            # Update UI with computed residuals
-            tools_panel.update_fit_results(rmse, residuals)
-            status_panel.update_transform_status(f'{model_type.value.capitalize()} model loaded (sidecar)', rmse)
-            tools_panel.set_sidecar_status(True, model_type.value)
-
-            logging.info(f'Loaded ortho model from sidecar for {image_path} with RMSE: {rmse:.3f}px' if rmse else f'Loaded ortho model from sidecar for {image_path}')
-
-        except Exception as e:
-            logging.error(f'Failed to load ortho model sidecar: {e}', exc_info=True)
+        sidecar = load_ortho_model(Path(image_path))
+        if sidecar is None:
             tools_panel.set_sidecar_status(False)
+            return
+
+        # Verify GCP IDs match (optional - could allow partial matches)
+        current_gcp_ids = set(g.id for g in self._gcp_proc.get_gcps())
+        sidecar_gcp_ids = set(sidecar.metadata.gcp_ids)
+
+        if not current_gcp_ids.issuperset(sidecar_gcp_ids):
+            logging.warning(f'Sidecar GCP IDs {sidecar_gcp_ids} not all present in current GCPs {current_gcp_ids}')
+            tools_panel.set_sidecar_status(False)
+            return
+
+        # Create appropriate projector type using factory
+        model_type = Transformation_Type(sidecar.metadata.model_type)
+        projector = create_projector(model_type)
+
+        # Apply model data to projector
+        apply_model_to_projector(projector, sidecar.model_data, sidecar.metadata.model_type)
+
+        # Set the projector
+        self._set_projector(projector)
+
+        # Compute residuals using loaded projector and current GCPs
+        residuals = []
+        for gcp in self._gcp_proc.get_gcps():
+            if gcp.id in sidecar_gcp_ids:
+                pred = projector.world_to_pixel(gcp.geographic)
+                rms = ((pred.x_px - gcp.pixel.x_px) ** 2 + (pred.y_px - gcp.pixel.y_px) ** 2) ** 0.5
+                dx_px = pred.x_px - gcp.pixel.x_px
+                dy_px = pred.y_px - gcp.pixel.y_px
+                residuals.append(GCP_Residual(
+                    gcp_id=gcp.id,
+                    actual_pixel=gcp.pixel,
+                    predicted_pixel=pred,
+                    geographic=gcp.geographic,
+                    dx_px=dx_px,
+                    dy_px=dy_px,
+                    rms_px=rms
+                ))
+
+        # Calculate overall RMSE
+        rmse = np.sqrt(np.mean([r.rms_px ** 2 for r in residuals])) if residuals else None
+
+        # Update UI with computed residuals
+        tools_panel.update_fit_results(rmse, residuals)
+        status_panel.update_transform_status(f'{model_type.value.capitalize()} model loaded (sidecar)', rmse)
+        tools_panel.set_sidecar_status(True, model_type.value)
+
+        logging.info(f'Loaded ortho model from sidecar for {image_path} with RMSE: {rmse:.3f}px' if rmse else f'Loaded ortho model from sidecar for {image_path}')

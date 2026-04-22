@@ -56,7 +56,8 @@ class Imagery_Loader:
                 identity = rasterio.transform.IDENTITY
                 has_geotransform = (src.transform != identity
                                     and src.transform is not None)
-                has_gcps = len(src.gcps[1]) > 0 if src.gcps else False
+                gcps_list = src.gcps[1] if src.gcps and src.gcps[1] is not None else None
+                has_gcps = len(gcps_list) > 0 if gcps_list is not None else False
                 return Imagery_Info(
                     file_path        = str(file_path),
                     width            = src.width,

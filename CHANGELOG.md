@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-04-21
+
+### Added
+* **Auto GCP Solver** - Standalone application (`pointy-auto-gcp`) for automatic GCP detection using feature matching and edge alignment
+* **Auto Model Solver** - Standalone application (`pointy-auto-model`) for automatic geometric model fitting from GCP candidates
+* New `Match_Pipeline` with feature extraction (AKAZE/ORB), matching, and outlier filtering (RANSAC/MAGSAC)
+* Edge alignment optimization using genetic algorithm (`GA_Optimizer`) for refining image-to-image registration
+* `GCP_Candidate_Set` and `Auto_Matcher` classes for managing match candidates
+
+### Changed
+* **Breaking**: Refactored GCP class API - renamed `test_pixel` to `pixel`, removed `projected` field
+* **Breaking**: Serialization format updated - `test_pixel` key changed to `pixel` in JSON sidecar files
+* Updated all Pointy code and tests to use new GCP `pixel` attribute
+* Made ortho model sidecar loading errors fatal (removed try/except) for easier debugging
+
+### Fixed
+* `GCP_Residual` construction in `ortho_controller.py` now includes all required fields
+* `to_gdal_format()` and `__str__` methods in Pointy GCP class use correct attribute names
+
+
 ## [1.1.0] - 2026-04-13
 
 ### Added

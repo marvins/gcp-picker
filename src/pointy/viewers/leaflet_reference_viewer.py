@@ -674,7 +674,7 @@ class Leaflet_Reference_Viewer(QWidget):
         else:
             # Map isn't ready yet, queue the GCP for later
             self.pending_gcps.append((gcp_id, lon, lat))
-            self.logger.info(f"Queued GCP {gcp_id} for later drawing (map not ready, "
+            self.logger.debug(f"Queued GCP {gcp_id} for later drawing (map not ready, "
                            f"was_ready={self._map_was_ready}, pending_count={len(self.pending_gcps)})")
 
     def remove_gcp_point(self, gcp_id: int):
