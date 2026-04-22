@@ -343,14 +343,54 @@ class Image_View_Control_Panel(QWidget):
             # Format y-axis to avoid scientific notation for large numbers
             ax.ticklabel_format(style='plain', axis='y')
 
-        else:
-            # No valid data
-            ax.text(0.5, 0.5, 'No valid pixel data', ha='center', va='center',
-                   transform=ax.transAxes, fontsize=10)
-            ax.set_title('No Data Available', fontsize=10)
+            self.hist_canvas.draw()
 
-        # Use tight layout with padding
-        self.hist_figure.tight_layout(pad=0.5)
+    def update_histogram_with_data(self, hist, bin_edges, num_bins):
+        """Update the histogram plot with pre-computed histogram data.
+
+        Args:
+            hist: Pre-computed histogram counts
+            bin_edges: Bin edges from histogram computation
+            num_bins: Number of histogram bins
+        """
+        # Clear the figure completely
+        self.hist_figure.clear()
+        ax = self.hist_figure.add_subplot(111)
+
+        # Plot pre-computed histogram
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        ax.bar(bin_centers, hist, width=np.diff(bin_edges), color='#3498db', alpha=0.7, edgecolor='none')
+
+        # Add min/max vertical lines
+        current_min = self.min_pixel_spin.value()
+        current_max = self.max_pixel_spin.value()
+
+        # Only show lines if they're within the data range
+        data_min = bin_edges[0]
+        data_max = bin_edges[-1]
+        if current_min >= data_min and current_min <= data_max:
+            ax.axvline(x=current_min, color='#e74c3c', linestyle='--', linewidth=2, label=f'Min: {current_min}')
+        if current_max >= data_min and current_max <= data_max:
+            ax.axvline(x=current_max, color='#2ecc71', linestyle='--', linewidth=2, label=f'Max: {current_max}')
+
+        # Improved styling
+        ax.set_xlabel('Pixel Value', fontsize=9)
+        ax.set_ylabel('Frequency', fontsize=9)
+        ax.set_title(f'Pixel Distribution (Range: {data_min:.0f}-{data_max:.0f})', fontsize=10)
+
+        # Only show legend if we have lines
+        if (current_min >= data_min and current_min <= data_max) or \
+           (current_max >= data_min and current_max <= data_max):
+            ax.legend(loc='upper right', fontsize=8)
+
+        ax.grid(True, alpha=0.3)
+
+        # Set reasonable axis limits
+        ax.set_xlim(data_min, data_max)
+
+        # Format y-axis to avoid scientific notation for large numbers
+        ax.ticklabel_format(style='plain', axis='y')
+
         self.hist_canvas.draw()
 
     def update_histogram_markers(self):

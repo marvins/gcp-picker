@@ -30,7 +30,7 @@ Key functionality:
 
 Typical workflow:
 
-1. Collect GCPs with test_pixel and geographic coordinates
+1. Collect GCPs with pixel and geographic coordinates
 2. Fit a transformation model using fit_transformation_model()
 3. Warp the image using warp_image() with the fitted projector
 4. Evaluate residuals to assess model quality
@@ -148,9 +148,9 @@ def fit_transformation_model(
     of GCPs and computes residual errors for each GCP to assess model quality.
 
     Args:
-        gcps: List of GCP objects with test_pixel and geographic attributes.
+        gcps: List of GCP objects with pixel and geographic attributes.
             Each GCP must have:
-            - test_pixel: Pixel coordinates in the source image (Pixel object)
+            - pixel: Pixel coordinates in the source image (Pixel object)
             - geographic: Geographic coordinates (Geographic object)
             Minimum required GCPs:
             - Affine: 3 GCPs (for 6 DOF transformation)
@@ -212,22 +212,22 @@ def fit_transformation_model(
         raise ValueError(f'Unknown model: {model_type}')
 
     projector = projector_cls()
-    control_points = [(gcp.test_pixel, gcp.geographic) for gcp in gcps]
+    control_points = [(gcp.pixel, gcp.geographic) for gcp in gcps]
     projector.solve_from_gcps(control_points)
 
     # Calculate residuals
     residuals = []
     sq_errors = []
     for gcp in gcps:
-        pred = projector.geographic_to_source(gcp.geographic)
-        rms = ((pred.x_px - gcp.test_pixel.x_px) ** 2 + (pred.y_px - gcp.test_pixel.y_px) ** 2) ** 0.5
+        pred = projector.world_to_pixel(gcp.geographic)
+        rms = ((pred.x_px - gcp.pixel.x_px) ** 2 + (pred.y_px - gcp.pixel.y_px) ** 2) ** 0.5
         residuals.append(GCP_Residual(
             gcp_id=gcp.id,
-            actual_pixel=gcp.test_pixel,
+            actual_pixel=gcp.pixel,
             predicted_pixel=pred,
             geographic=gcp.geographic,
-            dx_px=pred.x_px - gcp.test_pixel.x_px,
-            dy_px=pred.y_px - gcp.test_pixel.y_px,
+            dx_px=pred.x_px - gcp.pixel.x_px,
+            dy_px=pred.y_px - gcp.pixel.y_px,
             rms_px=rms
         ))
         sq_errors.append(rms ** 2)

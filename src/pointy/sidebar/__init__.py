@@ -23,10 +23,12 @@ from pointy.sidebar.components.collection_nav_panel import Collection_Nav_Panel
 from pointy.sidebar.components.view_control_panel import Image_View_Control_Panel
 from pointy.sidebar.components.metadata_panel import Metadata_Panel
 from pointy.sidebar.components.transformation_status_panel import Transformation_Status_Panel
-from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
+from pointy.sidebar.activity_bar_sidebar import Activity_Bar_Sidebar
+from pointy.sidebar.icon_bar import Icon_Bar
 
 __all__ = [
-    'Tabbed_Sidebar',
+    'Activity_Bar_Sidebar',
+    'Icon_Bar',
     'GCP_Panel',
     'Tools_Panel',
     'Collection_Nav_Panel',

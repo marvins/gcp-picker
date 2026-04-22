@@ -32,7 +32,7 @@ import pytest
 from pointy.controllers.gcp_controller import GCP_Controller
 from pointy.core.gcp_processor import GCP_Processor
 from tmns.geo.coord import Geographic, Pixel
-from tmns.geo.proj import GCP
+from pointy.core.gcp import GCP
 
 
 @pytest.fixture
@@ -44,19 +44,17 @@ def sample_gcp_json(tmp_path) -> Path:
         "gcps": [
             {
                 "id": 1,
-                "test_pixel": {"x_px": 100.0, "y_px": 200.0},
+                "pixel": {"x_px": 100.0, "y_px": 200.0},
                 "reference_pixel": {"x_px": 100.0, "y_px": 200.0},
                 "geographic": {"latitude_deg": 35.3, "longitude_deg": -119.0, "altitude_m": 50.0},
-                "projected": None,
                 "error": None,
                 "enabled": True
             },
             {
                 "id": 2,
-                "test_pixel": {"x_px": 500.0, "y_px": 600.0},
+                "pixel": {"x_px": 500.0, "y_px": 600.0},
                 "reference_pixel": {"x_px": 500.0, "y_px": 600.0},
                 "geographic": {"latitude_deg": 35.4, "longitude_deg": -118.9, "altitude_m": 75.0},
-                "projected": None,
                 "error": None,
                 "enabled": True
             }
@@ -123,8 +121,8 @@ class Test_GCP_Processor_Loading:
 
         gcp1 = processor.get_gcp(1)
         assert gcp1 is not None
-        assert abs(gcp1.test_pixel.x_px - 100.0) < 1e-6
-        assert abs(gcp1.test_pixel.y_px - 200.0) < 1e-6
+        assert abs(gcp1.pixel.x_px - 100.0) < 1e-6
+        assert abs(gcp1.pixel.y_px - 200.0) < 1e-6
 
     def test_load_gcps_missing_file_raises(self, processor):
         """Verify FileNotFoundError raised for nonexistent file."""
@@ -144,7 +142,7 @@ class Test_GCP_Processor_Management:
         """Verify add_gcp increases the GCP count."""
         gcp = GCP(
             id=1,
-            test_pixel=Pixel.create(10.0, 20.0),
+            pixel=Pixel.create(10.0, 20.0),
             reference_pixel=Pixel.create(10.0, 20.0),
             geographic=Geographic.create(35.0, -119.0)
         )
@@ -155,7 +153,7 @@ class Test_GCP_Processor_Management:
         """Verify remove_gcp decreases the GCP count."""
         gcp = GCP(
             id=1,
-            test_pixel=Pixel.create(10.0, 20.0),
+            pixel=Pixel.create(10.0, 20.0),
             reference_pixel=Pixel.create(10.0, 20.0),
             geographic=Geographic.create(35.0, -119.0)
         )
@@ -183,7 +181,7 @@ class Test_GCP_Processor_Management:
         """Verify has_gcps returns True after adding a GCP."""
         gcp = GCP(
             id=1,
-            test_pixel=Pixel.create(10.0, 20.0),
+            pixel=Pixel.create(10.0, 20.0),
             reference_pixel=Pixel.create(10.0, 20.0),
             geographic=Geographic.create(35.0, -119.0)
         )
@@ -212,10 +210,9 @@ class Test_GCP_Processor_Image_Filter:
             "gcps": [
                 {
                     "id": 1,
-                    "test_pixel": {"x_px": 100.0, "y_px": 200.0},
+                    "pixel": {"x_px": 100.0, "y_px": 200.0},
                     "reference_pixel": {"x_px": 100.0, "y_px": 200.0},
                     "geographic": {"latitude_deg": 35.3, "longitude_deg": -119.0, "altitude_m": 50.0},
-                    "projected": None,
                     "error": None,
                     "enabled": True
                 }

@@ -167,14 +167,18 @@ class GCP_Manager(QWidget):
         self.gcp_table.setItem(row, 0, id_item)
 
         # Test coordinates
-        test_x_item = QTableWidgetItem(f"{gcp.test_pixel.x_px:.2f}")
-        test_y_item = QTableWidgetItem(f"{gcp.test_pixel.y_px:.2f}")
+        test_x_item = QTableWidgetItem(f"{gcp.pixel.x_px:.2f}")
+        test_y_item = QTableWidgetItem(f"{gcp.pixel.y_px:.2f}")
         self.gcp_table.setItem(row, 1, test_x_item)
         self.gcp_table.setItem(row, 2, test_y_item)
 
-        # Reference coordinates
-        ref_x_item = QTableWidgetItem(f"{gcp.reference_pixel.x_px:.2f}")
-        ref_y_item = QTableWidgetItem(f"{gcp.reference_pixel.y_px:.2f}")
+        # Reference coordinates (optional)
+        if gcp.reference_pixel:
+            ref_x_item = QTableWidgetItem(f"{gcp.reference_pixel.x_px:.2f}")
+            ref_y_item = QTableWidgetItem(f"{gcp.reference_pixel.y_px:.2f}")
+        else:
+            ref_x_item = QTableWidgetItem("-")
+            ref_y_item = QTableWidgetItem("-")
         self.gcp_table.setItem(row, 3, ref_x_item)
         self.gcp_table.setItem(row, 4, ref_y_item)
 
@@ -299,9 +303,9 @@ class GCP_Manager(QWidget):
         try:
             # Update GCP based on column
             if item.column() == 1:  # Test X
-                gcp.test_pixel.x_px = float(item.text())
+                gcp.pixel.x_px = float(item.text())
             elif item.column() == 2:  # Test Y
-                gcp.test_pixel.y_px = float(item.text())
+                gcp.pixel.y_px = float(item.text())
             elif item.column() == 3:  # Ref X
                 gcp.reference_pixel.x_px = float(item.text())
             elif item.column() == 4:  # Ref Y

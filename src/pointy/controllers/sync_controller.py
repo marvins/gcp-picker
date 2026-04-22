@@ -84,7 +84,7 @@ class Sync_Controller:
             if projector is None or projector.is_identity:
                 self._status.showMessage('No model fitted — fit a model in the Ortho tab first')
                 return
-            src_px = projector.geographic_to_source(Geographic.create(lat, lon))
+            src_px = projector.world_to_pixel(Geographic.create(lat, lon))
             px, py = src_px.x_px, src_px.y_px
 
         self._test.image_view.centerOn(px, py)
@@ -104,11 +104,11 @@ class Sync_Controller:
             return
 
         self._test.image_view.set_zoom(1.0)
-        self._test.image_view.centerOn(gcp.test_pixel.x_px, gcp.test_pixel.y_px)
+        self._test.image_view.centerOn(gcp.pixel.x_px, gcp.pixel.y_px)
         self._ref.recreate_map_with_center(gcp.geographic, zoom=17)
         self._status.showMessage(
             f'Navigated to GCP {gcp_id} — '
-            f'pixel ({gcp.test_pixel.x_px:.0f}, {gcp.test_pixel.y_px:.0f}), '
+            f'pixel ({gcp.pixel.x_px:.0f}, {gcp.pixel.y_px:.0f}), '
             f'geo ({gcp.geographic.latitude_deg:.6f}, {gcp.geographic.longitude_deg:.6f})'
         )
 
@@ -132,7 +132,7 @@ class Sync_Controller:
         if projector is None or projector.is_identity:
             self._status.showMessage('No model fitted — fit a model in the Ortho tab first')
             return None
-        return projector.source_to_geographic(Pixel.create(cx, cy))
+        return projector.pixel_to_world(Pixel.create(cx, cy))
 
     def _leaflet_zoom_from_test_zoom(self, pixel_zoom: float) -> int:
         """Estimate Leaflet zoom level from test viewer pixel zoom and projector GSD."""

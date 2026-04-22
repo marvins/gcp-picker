@@ -101,9 +101,9 @@ def visualize_results(test_image: np.ndarray, ref_image: np.ndarray, candidate_r
     # Scale GCP coordinates accordingly
     # Convert GCP objects to tuples if needed
     if manual_gcps and len(manual_gcps) > 0:
-        if hasattr(manual_gcps[0], 'test_pixel'):
+        if hasattr(manual_gcps[0], 'pixel'):
             # GCP objects
-            manual_gcps_scaled = [(gcp.test_pixel.x_px / test_scale, gcp.test_pixel.y_px / test_scale, gcp.geographic.longitude_deg, gcp.geographic.latitude_deg) for gcp in manual_gcps]
+            manual_gcps_scaled = [(gcp.pixel.x_px / test_scale, gcp.pixel.y_px / test_scale, gcp.geographic.longitude_deg, gcp.geographic.latitude_deg) for gcp in manual_gcps]
         else:
             # Already tuples
             manual_gcps_scaled = [(px_x / test_scale, px_y / test_scale, lon, lat) for px_x, px_y, lon, lat in manual_gcps]

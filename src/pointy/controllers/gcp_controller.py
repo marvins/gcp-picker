@@ -25,13 +25,51 @@ import logging
 from pathlib import Path
 
 # Third-Party Libraries
+from qtpy.QtCore import QObject, QRunnable, QThreadPool, Signal
 from qtpy.QtWidgets import QFileDialog, QMessageBox
 
 # Project Libraries
 from tmns.geo.coord import Geographic
 
 
-class GCP_Controller:
+class GCP_Load_Task(QRunnable):
+    """Runnable task for loading GCPs in background thread."""
+
+    def __init__(self, image_path: str, gcp_processor, controller):
+        """Initialize GCP load task.
+
+        Args:
+            image_path: Path to image file
+            gcp_processor: GCP_Processor instance
+            controller: GCP_Controller reference for emitting signals
+        """
+        super().__init__()
+        self.image_path = image_path
+        self.gcp_processor = gcp_processor
+        self.controller = controller
+        self.setAutoDelete(True)
+
+    def run(self):
+        """Execute GCP loading task in background.
+
+        Raises:
+            Exception: Propagates any error loading GCPs (malformed files,
+                missing keys, etc.) without catching - caller must handle.
+        """
+        # Look for GCP sidecar file
+        sidecar = Path(self.image_path + '.gcps.json')
+        gcps = []
+        count = 0
+
+        if sidecar.exists():
+            count = self.gcp_processor.load_gcps(str(sidecar))
+            gcps = self.gcp_processor.get_gcps()
+
+        # Emit completion signal with results
+        self.controller.gcp_load_completed.emit(self.image_path, gcps, count)
+
+
+class GCP_Controller(QObject):
     """Manages the GCP lifecycle.
 
     Args:
@@ -45,9 +83,13 @@ class GCP_Controller:
         parent_widget:    Parent QWidget for dialogs (usually Main_Window).
     """
 
+    # Signals for async GCP loading
+    gcp_load_completed = Signal(str, list, int)  # image_path, gcps, count
+
     def __init__(self, gcp_processor, gcp_manager, gcp_panel,
                  test_viewer, reference_viewer, collection_manager,
                  status_bar, parent_widget):
+        super().__init__()
         self._gcp_proc       = gcp_processor
         self._mgr            = gcp_manager
         self._panel          = gcp_panel
@@ -56,6 +98,10 @@ class GCP_Controller:
         self._coll_mgr       = collection_manager
         self._status         = status_bar
         self._parent         = parent_widget
+
+        # Thread pool for async operations
+        self.thread_pool = QThreadPool.globalInstance()
+        self.thread_pool.setMaxThreadCount(2)
 
 
     def connect(self):
@@ -73,6 +119,9 @@ class GCP_Controller:
         self._test.point_selected.connect(self.on_test_point_selected)
         self._test.gcp_point_clicked.connect(self.on_test_gcp_clicked)
         self._ref.point_selected.connect(self.on_reference_point_selected)
+
+        # Connect async GCP loading signals
+        self.gcp_load_completed.connect(self._on_gcp_load_completed)
 
     # ------------------------------------------------------------------
     # Point selection
@@ -123,7 +172,7 @@ class GCP_Controller:
     def on_gcp_added(self, gcp):
         """Handle GCP addition."""
         self._gcp_proc.add_gcp(gcp)
-        self._test.add_gcp_point(int(gcp.test_pixel.x_px), int(gcp.test_pixel.y_px), gcp.id)
+        self._test.add_gcp_point(int(gcp.pixel.x_px), int(gcp.pixel.y_px), gcp.id)
         self._ref.add_gcp_point(gcp.id, gcp.geographic.longitude_deg, gcp.geographic.latitude_deg)
         self._status.showMessage(f'Added GCP {gcp.id}')
 
@@ -138,7 +187,7 @@ class GCP_Controller:
         """Handle GCP selection — highlight in both viewers and update info panel."""
         gcp = self._gcp_proc.get_gcp(gcp_id)
         if gcp:
-            self._test.highlight_gcp_point(int(gcp.test_pixel.x_px), int(gcp.test_pixel.y_px))
+            self._test.highlight_gcp_point(int(gcp.pixel.x_px), int(gcp.pixel.y_px))
             self._ref.highlight_gcp_point(gcp.geographic.longitude_deg, gcp.geographic.latitude_deg)
             self._panel.update_gcp_info(gcp)
 
@@ -265,7 +314,7 @@ class GCP_Controller:
         self._status.showMessage('Cleared all GCPs')
 
     def load_gcps_for_image(self, image_path: str):
-        """Load GCPs for a specific image (collection-level GCPs).
+        """Load GCPs for a specific image (collection-level GCPs) asynchronously.
 
         Clears existing GCPs and loads the collection's GCP file if available.
         If no collection is loaded or no GCP file exists, the viewers are left empty.
@@ -280,20 +329,16 @@ class GCP_Controller:
         self._gcp_proc.clear_gcps()
         self._gcp_proc.set_test_image_path(image_path)
 
-        basename = Path(image_path).name
+        # Start async GCP loading in background
+        task = GCP_Load_Task(image_path, self._gcp_proc, self)
+        self.thread_pool.start(task)
 
-        # Look for a GCP sidecar alongside the image (saved work)
-        sidecar = Path(image_path + '.gcps.json')
-        if sidecar.exists():
-            try:
-                count = self._gcp_proc.load_gcps(str(sidecar))
-                self._mgr.update_gcp_list(self._gcp_proc.get_gcps())
-                logging.info(f'Loaded {count} GCPs for image: {basename}')
-                return
-            except Exception as e:
-                logging.warning(f'Could not load GCP sidecar {sidecar}: {e}')
+    def _on_gcp_load_completed(self, image_path: str, gcps: list, count: int):
+        """Handle async GCP load completion."""
+        if gcps:
+            self._mgr.update_gcp_list(gcps)
+            logging.info(f'Loaded {count} GCPs for image: {Path(image_path).name}')
 
-        logging.debug(f'No GCP sidecar found for image: {basename}')
 
     def check_unsaved_before_exit(self) -> bool:
         """Check for unsaved GCP changes before exiting.

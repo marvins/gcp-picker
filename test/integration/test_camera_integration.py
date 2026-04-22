@@ -21,7 +21,8 @@ import numpy as np
 import pytest
 
 from tmns.geo.coord import Geographic, Pixel
-from tmns.geo.proj import Transformation_Type, Identity, Affine, GCP
+from tmns.geo.proj import Transformation_Type, Identity, Affine
+from pointy.core.gcp import GCP
 
 
 class Simple_Camera_Model:
@@ -95,7 +96,7 @@ class Simple_Camera_Model:
                 gcp_id = i * grid_size + j + 1  # Start from 1, not 0
                 gcp = GCP(
                     id=gcp_id,
-                    test_pixel=image_point,
+                    pixel=image_point,
                     reference_pixel=Pixel(x_px=image_point.x_px, y_px=image_point.y_px),
                     geographic=world_point
                 )
@@ -127,7 +128,7 @@ class Test_Camera_Integration:
 
                 gcp = GCP(
                     id=i * 3 + j + 1,
-                    test_pixel=pixel,
+                    pixel=pixel,
                     reference_pixel=pixel,
                     geographic=geo
                 )
@@ -149,11 +150,11 @@ class Test_Camera_Integration:
         # Test roundtrip transformations
         for gcp in gcps[:3]:  # Test first few GCPs
             # Test source coordinate roundtrip
-            geo_from_pixel = projector.source_to_geographic(gcp.test_pixel)
-            pixel_from_geo = projector.geographic_to_source(geo_from_pixel)
+            geo_from_pixel = projector.pixel_to_world(gcp.pixel)
+            pixel_from_geo = projector.world_to_pixel(geo_from_pixel)
 
-            assert abs(pixel_from_geo.x_px - gcp.test_pixel.x_px) < 1e-6
-            assert abs(pixel_from_geo.y_px - gcp.test_pixel.y_px) < 1e-6
+            assert abs(pixel_from_geo.x_px - gcp.pixel.x_px) < 1e-6
+            assert abs(pixel_from_geo.y_px - gcp.pixel.y_px) < 1e-6
 
     def test_gcp_validation(self):
         """Test GCP validation and quality metrics."""
@@ -168,7 +169,7 @@ class Test_Camera_Integration:
 
             gcp = GCP(
                 id=i + 1,
-                test_pixel=pixel,
+                pixel=pixel,
                 reference_pixel=pixel,
                 geographic=geo
             )
@@ -177,7 +178,7 @@ class Test_Camera_Integration:
         # Test GCP properties
         for gcp in gcps:
             assert isinstance(gcp.id, int)
-            assert isinstance(gcp.test_pixel, Pixel)
+            assert isinstance(gcp.pixel, Pixel)
             assert isinstance(gcp.reference_pixel, Pixel)
             assert isinstance(gcp.geographic, Geographic)
 
@@ -185,11 +186,11 @@ class Test_Camera_Integration:
             assert -90 <= gcp.geographic.latitude_deg <= 90
             assert -180 <= gcp.geographic.longitude_deg <= 180
             # Pixel coordinates can be any float for testing
-            # assert gcp.test_pixel.x_px >= 0
-            # assert gcp.test_pixel.y_px >= 0
+            # assert gcp.pixel.x_px >= 0
+            # assert gcp.pixel.y_px >= 0
 
         # Test GCP uniqueness
-        test_pixels = [(gcp.test_pixel.x_px, gcp.test_pixel.y_px) for gcp in gcps]
+        test_pixels = [(gcp.pixel.x_px, gcp.pixel.y_px) for gcp in gcps]
         assert len(set(test_pixels)) == len(test_pixels)  # All unique
 
         geog_coords = [(gcp.geographic.latitude_deg, gcp.geographic.longitude_deg) for gcp in gcps]
@@ -210,7 +211,7 @@ class Test_Camera_Integration:
 
             gcp = GCP(
                 id=i + 1,
-                test_pixel=pixel,
+                pixel=pixel,
                 reference_pixel=pixel,
                 geographic=geo
             )
@@ -222,9 +223,9 @@ class Test_Camera_Integration:
         # Roundtrip validation: source → geographic → source
         tolerance = 1e-6
         for gcp in gcps:
-            original_pixel = gcp.test_pixel
-            geo = identity_proj.source_to_geographic(original_pixel)
-            result_pixel = identity_proj.geographic_to_source(geo)
+            original_pixel = gcp.pixel
+            geo = identity_proj.pixel_to_world(original_pixel)
+            result_pixel = identity_proj.world_to_pixel(geo)
 
             # Check precision loss
             pixel_error_x = abs(result_pixel.x_px - original_pixel.x_px)

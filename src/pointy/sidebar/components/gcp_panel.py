@@ -250,7 +250,7 @@ class GCP_Panel(QWidget):
         """Update the GCP information display."""
         if gcp:
             info = f"""GCP ID: {gcp.id}
-Test Pixel: ({gcp.test_pixel.x_px:.1f}, {gcp.test_pixel.y_px:.1f})
+Test Pixel: ({gcp.pixel.x_px:.1f}, {gcp.pixel.y_px:.1f})
 Reference Pixel: ({gcp.reference_pixel.x_px:.1f}, {gcp.reference_pixel.y_px:.1f})
 Geographic: ({gcp.geographic.latitude_deg:.6f}, {gcp.geographic.longitude_deg:.6f})
 Elevation: {gcp.geographic.altitude_m:.1f}m

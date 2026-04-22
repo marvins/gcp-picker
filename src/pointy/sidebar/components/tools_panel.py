@@ -52,6 +52,7 @@ class Tools_Panel(QWidget):
     fit_requested = Signal(str)              # model_name
     output_projection_changed = Signal(str)  # Output_Projection.value
     sidecar_delete_requested = Signal()     # delete sidecar file
+    export_requested = Signal()             # export ortho-rectified GeoTIFF
 
     def __init__(self):
         super().__init__()
@@ -76,23 +77,27 @@ class Tools_Panel(QWidget):
         # Model selector row
         model_row = QHBoxLayout()
         model_label = QLabel("Model:")
-        model_label.setFixedWidth(80)
+        model_label.setFixedWidth(90)
+        model_label.setStyleSheet("QLabel { font-size: 8pt; }")
         model_row.addWidget(model_label)
         self.model_combo = QComboBox()
         self.model_combo.addItems(AVAILABLE_MODELS)
         self.model_combo.setToolTip("Select the projection model to fit")
+        self.model_combo.setStyleSheet("QComboBox { font-size: 8pt; }")
         model_row.addWidget(self.model_combo, 1)
         model_layout.addLayout(model_row)
 
         # Output projection row
         proj_row = QHBoxLayout()
         proj_label = QLabel("Output CRS:")
-        proj_label.setFixedWidth(80)
+        proj_label.setFixedWidth(90)
+        proj_label.setStyleSheet("QLabel { font-size: 8pt; }")
         proj_row.addWidget(proj_label)
         self.proj_combo = QComboBox()
         for p in Output_Projection:
             self.proj_combo.addItem(p.value)
         self.proj_combo.setToolTip("Coordinate system for the orthorectified output")
+        self.proj_combo.setStyleSheet("QComboBox { font-size: 8pt; }")
         self.proj_combo.currentTextChanged.connect(self._on_proj_changed)
         proj_row.addWidget(self.proj_combo, 1)
         model_layout.addLayout(proj_row)
@@ -103,6 +108,10 @@ class Tools_Panel(QWidget):
         self.fit_btn.setToolTip("Fit the selected model to the current GCPs")
         self.fit_btn.clicked.connect(self._on_fit_clicked)
         fit_row.addWidget(self.fit_btn)
+        self.export_btn = QPushButton("Export GeoTIFF")
+        self.export_btn.setToolTip("Export ortho-rectified image as GeoTIFF")
+        self.export_btn.clicked.connect(self._on_export_clicked)
+        fit_row.addWidget(self.export_btn)
         fit_row.addStretch()
         model_layout.addLayout(fit_row)
 
@@ -163,6 +172,10 @@ class Tools_Panel(QWidget):
     def _on_delete_sidecar(self):
         """Handle delete sidecar button click."""
         self.sidecar_delete_requested.emit()
+
+    def _on_export_clicked(self):
+        """Handle export button click."""
+        self.export_requested.emit()
 
     def set_sidecar_status(self, has_sidecar: bool, model_type: str | None = None, replaced: bool = False):
         """Update the sidecar status label.

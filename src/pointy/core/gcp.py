@@ -24,16 +24,20 @@ from typing import Any
 from rasterio.control import GroundControlPoint
 
 #  Project Libraries
-from tmns.geo.coord import Geographic, Pixel, UTM
+from tmns.geo.coord import Geographic, Pixel
 from tmns.geo.proj.gcp import GCP as Base_GCP
 
 @dataclass
 class GCP(Base_GCP):
     """Ground Control Point with GUI-specific metadata.
 
-    Extends the terminus-core GCP with additional fields for GUI workflows.
+    Extends the terminus-core GCP with additional fields for GUI workflows:
+    - reference_pixel: Pixel coordinates in a reference image (for image-to-image registration)
+    - source: Origin of the GCP ('manual', 'auto', or algorithm identifier)
+    - metadata: Additional algorithm-specific data
     """
 
+    reference_pixel: Pixel | None = None
     source: str = 'manual'
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -47,38 +51,44 @@ class GCP(Base_GCP):
         base_dict = super().to_dict()
         base_dict['source'] = self.source
         base_dict['metadata'] = self.metadata
+        if self.reference_pixel is not None:
+            base_dict['reference_pixel'] = {
+                'x': self.reference_pixel.x_px,
+                'y': self.reference_pixel.y_px
+            }
         return base_dict
 
     @classmethod
     def from_dict(cls, data):
         """Create GCP from dictionary."""
 
-        test_pixel = Pixel.create(data['test_pixel']['x'], data['test_pixel']['y'])
-        ref_pixel = Pixel.create(data['reference_pixel']['x'], data['reference_pixel']['y'])
+        pixel_data = data['pixel']
+        pixel = Pixel.create(
+            pixel_data.get('x', pixel_data.get('x_px')),
+            pixel_data.get('y', pixel_data.get('y_px'))
+        )
 
         geo_data = data['geographic']
         geographic = Geographic.create(
-            geo_data['latitude'],
-            geo_data['longitude'],
-            geo_data.get('elevation')
+            geo_data.get('latitude', geo_data.get('latitude_deg')),
+            geo_data.get('longitude', geo_data.get('longitude_deg')),
+            geo_data.get('elevation', geo_data.get('altitude_m'))
         )
 
-        projected = None
-        if data.get('projected'):
-            proj_data = data['projected']
-            projected = UTM.create(
-                proj_data['easting'],
-                proj_data['northing'],
-                proj_data.get('crs', 'EPSG:3857'),
-                proj_data.get('elevation')
+        # Handle optional reference_pixel
+        reference_pixel = None
+        if data.get('reference_pixel'):
+            rp = data['reference_pixel']
+            reference_pixel = Pixel.create(
+                rp.get('x', rp.get('x_px')),
+                rp.get('y', rp.get('y_px'))
             )
 
         return cls(
             id=data['id'],
-            test_pixel=test_pixel,
-            reference_pixel=ref_pixel,
+            pixel=pixel,
+            reference_pixel=reference_pixel,
             geographic=geographic,
-            projected=projected,
             error=data.get('error'),
             enabled=data.get('enabled', True),
             source=data.get('source', 'manual'),
@@ -88,44 +98,44 @@ class GCP(Base_GCP):
     def to_gdal_format(self):
         """Convert to rasterio GCP format."""
         return GroundControlPoint(
-            row=self.test_pixel.y,
-            col=self.test_pixel.x,
-            x=self.geographic.longitude,
-            y=self.geographic.latitude,
-            z=self.geographic.elevation or 0,
+            row=self.pixel.y_px,
+            col=self.pixel.x_px,
+            x=self.geographic.longitude_deg,
+            y=self.geographic.latitude_deg,
+            z=self.geographic.altitude_m or 0,
             id=str(self.id)
         )
 
     def __str__(self):
         """String representation."""
-        return f"GCP {self.id}: Test{self.test_pixel} → Geo{self.geographic}"
+        return f"GCP {self.id}: Test{self.pixel} → Geo{self.geographic}"
 
     @property
     def test_x(self) -> float:
         """Get test X coordinate (backward compatibility)."""
-        return self.test_pixel.x
+        return self.pixel.x_px
 
     @property
     def test_y(self) -> float:
         """Get test Y coordinate (backward compatibility)."""
-        return self.test_pixel.y
+        return self.pixel.y_px
 
     @property
-    def ref_x(self) -> float:
+    def ref_x(self) -> float | None:
         """Get reference X coordinate (backward compatibility)."""
-        return self.reference_pixel.x
+        return self.reference_pixel.x_px if self.reference_pixel else None
 
     @property
-    def ref_y(self) -> float:
+    def ref_y(self) -> float | None:
         """Get reference Y coordinate (backward compatibility)."""
-        return self.reference_pixel.y
+        return self.reference_pixel.y_px if self.reference_pixel else None
 
     @property
     def longitude(self) -> float:
         """Get longitude (backward compatibility)."""
-        return self.geographic.longitude
+        return self.geographic.longitude_deg
 
     @property
     def latitude(self) -> float:
         """Get latitude (backward compatibility)."""
-        return self.geographic.latitude
+        return self.geographic.latitude_deg

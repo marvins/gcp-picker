@@ -28,7 +28,8 @@ from pointy.viewers.test_image_viewer import Test_Image_Viewer
 from pointy.viewers.leaflet_reference_viewer import Leaflet_Reference_Viewer
 from pointy.widgets.gcp_manager import GCP_Manager
 from pointy.widgets.about_dialog import show_about_dialog
-from pointy.sidebar.tabbed_sidebar import Tabbed_Sidebar
+from pointy.sidebar.activity_bar_sidebar import Activity_Bar_Sidebar
+from pointy.sidebar.icon_bar import Icon_Bar
 from pointy.core.gcp_processor import GCP_Processor
 from pointy.core.collection_manager import Collection_Manager
 from pointy.controllers.auto_gcp_solver_controller import Auto_GCP_Solver_Controller
@@ -71,6 +72,9 @@ class Main_Window(QMainWindow):
         # Initialize core components
         self.gcp_processor = GCP_Processor()
         self.collection_manager = Collection_Manager()
+
+        # Track sidebar state for toggle functionality
+        self.previous_sidebar_width = 340
 
         # Setup UI
         self.setup_ui()
@@ -164,8 +168,11 @@ class Main_Window(QMainWindow):
         # Add the image splitter to the left
         self.main_splitter.addWidget(self.image_splitter)
 
-        # Create sidebar widget using Tabbed_Sidebar
-        self.sidebar = Tabbed_Sidebar()
+        # Create icon bar (always visible)
+        self.icon_bar = Icon_Bar()
+
+        # Create sidebar widget using Activity_Bar_Sidebar (panel stack only)
+        self.sidebar = Activity_Bar_Sidebar()
         self.gcp_panel = self.sidebar.get_gcp_panel()
         self.gcp_manager = self.gcp_panel.gcp_manager
         # Connect GCP panel lock signal
@@ -178,13 +185,33 @@ class Main_Window(QMainWindow):
         nav_panel.next_image_requested.connect(self.load_next_collection_image)
         nav_panel.last_image_requested.connect(self.load_last_collection_image)
 
-        # Set sidebar width and add to main splitter
+        # Connect icon bar to sidebar panel switching
+        self.icon_bar.panel_selected.connect(self.sidebar.set_active_panel)
+        self.icon_bar.panel_toggled.connect(self.on_panel_toggled)
+
+        # Create container for icon bar + sidebar
+        sidebar_container = QWidget()
+        sidebar_layout = QHBoxLayout(sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+        sidebar_layout.addWidget(self.icon_bar)
+
+        # Set sidebar width and add to container
         self.sidebar.setMaximumWidth(450)
         self.sidebar.setMinimumWidth(300)
-        self.main_splitter.addWidget(self.sidebar)
+        sidebar_layout.addWidget(self.sidebar)
+
+        # Prevent full collapse - keep icon bar always visible at minimum width
+        sidebar_container.setMinimumWidth(Icon_Bar.ICON_BAR_WIDTH)
+
+        # Add container to main splitter
+        self.main_splitter.addWidget(sidebar_container)
+
+        # Prevent sidebar from being fully collapsed via splitter
+        self.main_splitter.setCollapsible(1, False)
 
         # Set main splitter sizes (images 70%, sidebar 30%)
-        self.main_splitter.setSizes([1000, 300])
+        self.main_splitter.setSizes([1000, 340])
 
         main_layout.addWidget(self.main_splitter)
 
@@ -294,7 +321,6 @@ class Main_Window(QMainWindow):
         self.gcp_ctrl.connect()
         self.ortho_ctrl.connect()
         self.image_ctrl.connect()
-        self.auto_match_ctrl.connect()
 
         # GCP navigation — Sync_Controller
         self.gcp_manager.gcp_navigate.connect(self.sync_ctrl.on_gcp_navigate)
@@ -319,6 +345,23 @@ class Main_Window(QMainWindow):
         """Handle GCP panel lock state changes."""
         msg = 'GCP selection is locked - points disabled' if is_locked else 'GCP selection is unlocked - points enabled'
         self.status_bar.showMessage(msg)
+
+    def on_panel_toggled(self, panel_id, should_expand: bool):
+        """Handle sidebar panel toggle - collapse or expand sidebar panel content."""
+        if should_expand:
+            # Expand sidebar panel to previous width
+            self.sidebar.setMinimumWidth(300)
+            self.sidebar.setMaximumWidth(450)
+            current_sizes = self.main_splitter.sizes()
+            self.main_splitter.setSizes([current_sizes[0] - self.previous_sidebar_width, self.previous_sidebar_width + Icon_Bar.ICON_BAR_WIDTH])
+        else:
+            # Collapse sidebar panel content (save current width first)
+            current_sizes = self.main_splitter.sizes()
+            self.previous_sidebar_width = current_sizes[1] - Icon_Bar.ICON_BAR_WIDTH  # Subtract icon bar width
+            self.sidebar.setMinimumWidth(0)
+            self.sidebar.setMaximumWidth(0)
+            # Keep icon bar visible, collapse only the panel content
+            self.main_splitter.setSizes([current_sizes[0] + self.previous_sidebar_width, Icon_Bar.ICON_BAR_WIDTH])
 
     def on_fit_requested(self, model_name: str):
         """Delegate model fitting to Ortho_Controller."""

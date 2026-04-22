@@ -109,17 +109,17 @@ def print_model_info(projector, gcp_proc: GCP_Processor):
         total_rmse = 0.0
         for i, gcp in enumerate(gcps, 1):
             # Forward: source pixel -> geo
-            geo_pred = projector.source_to_geographic(gcp.test_pixel)
+            geo_pred = projector.pixel_to_world(gcp.pixel)
             geo_error = np.sqrt(
                 (geo_pred.latitude_deg - gcp.geographic.latitude_deg) ** 2 +
                 (geo_pred.longitude_deg - gcp.geographic.longitude_deg) ** 2
             )
 
             # Inverse: geo -> source pixel
-            pixel_pred = projector.geographic_to_source(gcp.geographic)
+            pixel_pred = projector.world_to_pixel(gcp.geographic)
             pixel_error = np.sqrt(
-                (pixel_pred.x_px - gcp.test_pixel.x_px) ** 2 +
-                (pixel_pred.y_px - gcp.test_pixel.y_px) ** 2
+                (pixel_pred.x_px - gcp.pixel.x_px) ** 2 +
+                (pixel_pred.y_px - gcp.pixel.y_px) ** 2
             )
 
             print(f'GCP {i:2d}: Geo error={geo_error:.6f}°, Pixel error={pixel_error:.2f}px')

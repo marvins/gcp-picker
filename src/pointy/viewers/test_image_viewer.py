@@ -256,8 +256,8 @@ class Test_Image_Viewer(QWidget):
         self.show_loading_overlay()
         self.image_view.setStyleSheet("""
             QGraphicsView {
-                background-color: #808080;
-                border: 1px solid #ccc;
+                background-color: #1a1a1a;
+                border: 1px solid #333;
             }
         """)
 
@@ -294,8 +294,8 @@ class Test_Image_Viewer(QWidget):
             self.hide_loading_overlay()
             self.image_view.setStyleSheet("""
                 QGraphicsView {
-                    background-color: white;
-                    border: 1px solid #ccc;
+                    background-color: #1a1a1a;
+                    border: 1px solid #333;
                 }
             """)
 
@@ -443,7 +443,7 @@ class Test_Image_Viewer(QWidget):
                     and self._projector is not None
                     and self.current_image is not None):
                 try:
-                    geo = self._projector.source_to_geographic(Pixel(x_px=x, y_px=y))
+                    geo = self._projector.pixel_to_world(Pixel(x_px=x, y_px=y))
                     result = self.geo_to_ortho_pixel(geo.latitude_deg, geo.longitude_deg)
                     if result is not None:
                         draw_x, draw_y = result
@@ -499,7 +499,7 @@ class Test_Image_Viewer(QWidget):
                 return
             lat, lon = geo
             try:
-                src_px = self._projector.geographic_to_source(Geographic(latitude_deg=lat, longitude_deg=lon))
+                src_px = self._projector.world_to_pixel(Geographic(latitude_deg=lat, longitude_deg=lon))
                 x, y = src_px.x_px, src_px.y_px
             except Exception as e:
                 logging.debug(f'Ortho click inversion failed: {e}')
@@ -527,9 +527,9 @@ class Test_Image_Viewer(QWidget):
         if self._projector is None:
             return None
         try:
-            return self._projector.source_to_geographic(Pixel(x_px=x, y_px=y))
+            return self._projector.pixel_to_world(Pixel(x_px=x, y_px=y))
         except Exception as e:
-            logging.debug(f"source_pixel_to_geographic failed at ({x}, {y}): {e}")
+            logging.debug(f"pixel_to_world failed at ({x}, {y}): {e}")
             return None
 
     def geo_scale_at_center(self) -> float | None:
@@ -547,8 +547,8 @@ class Test_Image_Viewer(QWidget):
             src_h, src_w = self.original_image.shape[:2]
             delta = max(src_w, src_h) * 0.01
             cx, cy = src_w / 2.0, src_h / 2.0
-            geo_a = self._projector.source_to_geographic(Pixel(x_px=cx,         y_px=cy))
-            geo_b = self._projector.source_to_geographic(Pixel(x_px=cx + delta, y_px=cy))
+            geo_a = self._projector.pixel_to_world(Pixel(x_px=cx,         y_px=cy))
+            geo_b = self._projector.pixel_to_world(Pixel(x_px=cx + delta, y_px=cy))
             d_deg = abs(geo_b.longitude_deg - geo_a.longitude_deg)
             meters_per_deg_lon = METERS_PER_DEG_LAT * math.cos(math.radians(geo_a.latitude_deg))
             return d_deg * meters_per_deg_lon / delta

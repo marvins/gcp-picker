@@ -27,6 +27,7 @@ from pathlib import Path
 
 # Third-Party Libraries
 import numpy as np
+from qtpy.QtCore import QObject, QRunnable, QThreadPool, Signal
 from qtpy.QtWidgets import QFileDialog, QMessageBox
 from tomli_w import dump as toml_dump
 
@@ -35,7 +36,40 @@ from pointy.core.imagery_api import Imagery_Loader
 from tmns.geo.coord import Geographic
 
 
-class Image_Controller:
+class Histogram_Compute_Task(QRunnable):
+    """Runnable task for computing histograms in background thread."""
+
+    def __init__(self, image_data: np.ndarray, num_bins: int, controller):
+        """Initialize histogram compute task.
+
+        Args:
+            image_data: Image data array
+            num_bins: Number of histogram bins
+            controller: Image_Controller reference for emitting signals
+        """
+        super().__init__()
+        self.image_data = image_data
+        self.num_bins = num_bins
+        self.controller = controller
+        self.setAutoDelete(True)
+
+    def run(self):
+        """Execute histogram computation in background."""
+        try:
+            # Compute histogram
+            hist, bin_edges = np.histogram(
+                self.image_data.flatten(),
+                bins=self.num_bins,
+                range=(0, self.num_bins - 1)
+            )
+
+            # Emit completion signal with results
+            self.controller.histogram_computed.emit(hist, bin_edges, self.num_bins)
+        except Exception as e:
+            logging.error(f'Histogram computation failed: {e}')
+
+
+class Image_Controller(QObject):
     """Manages test image loading, collection navigation, and histogram updates.
 
     Args:
@@ -49,9 +83,13 @@ class Image_Controller:
         parent_widget:      Parent QWidget for dialogs.
     """
 
+    # Signal for async histogram computation
+    histogram_computed = Signal(object, object, int)  # hist, bin_edges, num_bins
+
     def __init__(self, test_viewer, reference_viewer, sidebar,
                  collection_manager, gcp_controller, status_bar,
                  ortho_controller=None, parent_widget=None):
+        super().__init__()
         self._test      = test_viewer
         self._ref       = reference_viewer
         self._sidebar   = sidebar
@@ -63,12 +101,19 @@ class Image_Controller:
         self._pending_seed: Geographic | None = None
         self._ortho_ctrl = ortho_controller
 
+        # Thread pool for async operations
+        self.thread_pool = QThreadPool.globalInstance()
+        self.thread_pool.setMaxThreadCount(2)
+
     def connect(self):
         """Wire all signals managed by this controller."""
         self._test.image_loaded.connect(self.on_image_loaded)
         self._test.image_loaded.connect(self._on_image_loaded_update_histogram)
         self._test.image_adjusted.connect(self._on_image_adjusted_update_histogram)
         self._sidebar.get_view_control_panel().recompute_bounds_requested.connect(self._on_recompute_bounds)
+
+        # Connect async histogram computation signal
+        self.histogram_computed.connect(self._on_histogram_computed)
 
     # ------------------------------------------------------------------
     # Image loading
@@ -171,7 +216,7 @@ class Image_Controller:
     # ------------------------------------------------------------------
 
     def _on_image_loaded_update_histogram(self, image_path: str):
-        """Update histogram when image is loaded."""
+        """Update histogram when image is loaded using async computation."""
         start = time.time()
         logging.debug(f'Updating histogram for image: {image_path}')
 
@@ -194,23 +239,34 @@ class Image_Controller:
             if not view_panel.auto_stretch_checkbox.isChecked():
                 view_panel.min_pixel_spin.setEnabled(True)
                 view_panel.max_pixel_spin.setEnabled(True)
-            view_panel.update_histogram(image_data, num_bins=min(256, max_pixel + 1))
+
+            # Start async histogram computation
+            num_bins = min(256, max_pixel + 1)
+            task = Histogram_Compute_Task(image_data, num_bins, self)
+            self.thread_pool.start(task)
         else:
             view_panel.update_histogram(image_data)
 
         logging.debug(f'Total histogram update took: {time.time() - start:.3f}s')
 
     def _on_image_adjusted_update_histogram(self):
-        """Update histogram when image adjustments are applied."""
+        """Update histogram when image adjustments are applied using async computation."""
         image_data = self._test.get_image_data() if hasattr(self._test, 'get_image_data') else None
         if image_data is None:
             return
         view_panel = self._sidebar.get_view_control_panel()
         if hasattr(self._test, 'bit_depth'):
             max_pixel = (2 ** self._test.bit_depth) - 1
-            view_panel.update_histogram(image_data, num_bins=min(256, max_pixel + 1))
+            num_bins = min(256, max_pixel + 1)
+            task = Histogram_Compute_Task(image_data, num_bins, self)
+            self.thread_pool.start(task)
         else:
             view_panel.update_histogram(image_data)
+
+    def _on_histogram_computed(self, hist, bin_edges, num_bins):
+        """Handle async histogram computation completion."""
+        view_panel = self._sidebar.get_view_control_panel()
+        view_panel.update_histogram_with_data(hist, bin_edges, num_bins)
 
     def _on_recompute_bounds(self):
         """Re-compute DRA bounds for the local view."""

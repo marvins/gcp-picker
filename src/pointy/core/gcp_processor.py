@@ -28,7 +28,9 @@ import numpy as np
 #  Project Libraries
 from tmns.geo.coord import Geographic, Pixel, UTM
 from tmns.geo.terrain import elevation as get_elevation
-from tmns.geo.proj import GCP, Identity
+from tmns.geo.proj import Identity
+
+from pointy.core.gcp import GCP
 
 class GCP_Processor:
     """Core processor for ground control points."""
@@ -160,7 +162,7 @@ class GCP_Processor:
         try:
             # Convert test pixel to geographic coordinates
             test_pixel = Pixel.create(x, y)
-            geographic = self.projector.source_to_geographic(test_pixel)
+            geographic = self.projector.pixel_to_world(test_pixel)
 
             # Convert geographic back to destination pixel (orthorectified)
             dest_pixel = self.projector.geographic_to_destination(geographic)
@@ -200,7 +202,7 @@ class GCP_Processor:
 
         gcp = GCP(
             id=self.next_gcp_id,
-            test_pixel=test_pixel,
+            pixel=test_pixel,
             reference_pixel=ref_pixel,
             geographic=geographic
         )
@@ -242,7 +244,7 @@ class GCP_Processor:
             f.write("# Format: ID test_x test_y ref_x ref_y longitude latitude\n")
 
             for gcp in self.gcps.values():
-                f.write(f"{gcp.id} {gcp.test_pixel.x_px:.6f} {gcp.test_pixel.y_px:.6f} "
+                f.write(f"{gcp.id} {gcp.pixel.x_px:.6f} {gcp.pixel.y_px:.6f} "
                        f"{gcp.reference_pixel.x_px:.6f} {gcp.reference_pixel.y_px:.6f} "
                        f"{gcp.geographic.longitude_deg:.8f} {gcp.geographic.latitude_deg:.8f}\n")
 
@@ -254,7 +256,7 @@ class GCP_Processor:
 
             for gcp in self.gcps.values():
                 writer.writerow([
-                    gcp.id, gcp.test_pixel.x_px, gcp.test_pixel.y_px,
+                    gcp.id, gcp.pixel.x_px, gcp.pixel.y_px,
                     gcp.reference_pixel.x_px, gcp.reference_pixel.y_px,
                     gcp.geographic.longitude_deg, gcp.geographic.latitude_deg
                 ])
@@ -339,7 +341,7 @@ class GCP_Processor:
 
                         gcp = GCP(
                             id=gcp_id,
-                            test_pixel=test_pixel,
+                            pixel=test_pixel,
                             reference_pixel=ref_pixel,
                             geographic=geographic
                         )
@@ -381,7 +383,7 @@ class GCP_Processor:
 
                     gcp = GCP(
                         id=gcp_id,
-                        test_pixel=test_pixel,
+                        pixel=test_pixel,
                         reference_pixel=ref_pixel,
                         geographic=geographic
                     )
@@ -399,11 +401,11 @@ class GCP_Processor:
 
         return [
             GroundControlPoint(
-                row=gcp.test_pixel.y,
-                col=gcp.test_pixel.x,
-                x=gcp.geographic.longitude,
-                y=gcp.geographic.latitude,
-                z=gcp.geographic.elevation or 0,
+                row=gcp.pixel.y_px,
+                col=gcp.pixel.x_px,
+                x=gcp.geographic.longitude_deg,
+                y=gcp.geographic.latitude_deg,
+                z=gcp.geographic.altitude_m or 0,
                 id=str(gcp.id)
             )
             for gcp in self.gcps.values()
@@ -451,17 +453,17 @@ class GCP_Processor:
 
         for gcp in self.gcps.values():
             # Forward: source pixel -> geo
-            geo_pred = projector.source_to_geographic(gcp.test_pixel)
+            geo_pred = projector.pixel_to_world(gcp.pixel)
             geo_error_deg = np.sqrt(
                 (geo_pred.latitude_deg - gcp.geographic.latitude_deg) ** 2 +
                 (geo_pred.longitude_deg - gcp.geographic.longitude_deg) ** 2
             )
 
             # Inverse: geo -> source pixel
-            pixel_pred = projector.geographic_to_source(gcp.geographic)
+            pixel_pred = projector.world_to_pixel(gcp.geographic)
             pixel_error_px = np.sqrt(
-                (pixel_pred.x_px - gcp.test_pixel.x_px) ** 2 +
-                (pixel_pred.y_px - gcp.test_pixel.y_px) ** 2
+                (pixel_pred.x_px - gcp.pixel.x_px) ** 2 +
+                (pixel_pred.y_px - gcp.pixel.y_px) ** 2
             )
 
             residuals.append({

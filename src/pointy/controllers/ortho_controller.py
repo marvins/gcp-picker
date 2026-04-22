@@ -21,19 +21,22 @@ raw/ortho view mode toggle.
 
 # Python Standard Libraries
 import logging
+from pathlib import Path
 
 # Third-Party Libraries
 import cv2
 import numpy as np
+import rasterio
+from rasterio.transform import from_bounds
 from pyproj import Transformer as Proj_Transformer
-from qtpy.QtWidgets import QMessageBox
+from qtpy.QtWidgets import QMessageBox, QFileDialog
 
 # Project Libraries
 from tmns.geo.coord import Geographic
 from tmns.geo.coord.crs import CRS
 from tmns.geo.proj import Transformation_Type
 from tmns.geo.proj.factory import create_projector
-from pointy.core.transformation import fit_transformation_model, warp_image
+from pointy.core.transformation import fit_transformation_model, warp_image, GCP_Residual
 from pointy.core.ortho_model_persistence import save_ortho_model, sidecar_exists, load_ortho_model, apply_model_to_projector, get_sidecar_path
 from pointy.sidebar.components.tools_panel import Output_Projection
 
@@ -66,6 +69,7 @@ class Ortho_Controller:
         tools_panel = self._sidebar.get_tools_panel()
         tools_panel.fit_requested.connect(self.on_fit_requested)
         tools_panel.sidecar_delete_requested.connect(self.on_delete_sidecar)
+        tools_panel.export_requested.connect(self.on_export_requested)
         self._test.view_mode_changed.connect(self.on_view_mode_changed)
 
     # ------------------------------------------------------------------
@@ -163,6 +167,90 @@ class Ortho_Controller:
         except Exception as e:
             logging.error(f'Failed to delete sidecar: {e}', exc_info=True)
             self._status.showMessage(f'Failed to delete sidecar: {e}')
+
+    def on_export_requested(self):
+        """Export the ortho-rectified image as a GeoTIFF."""
+        # Check if model is fitted
+        projector = self._gcp_proc.get_projector()
+        if projector is None or projector.is_identity:
+            self._status.showMessage('No model fitted — fit a model first')
+            QMessageBox.warning(self._parent, 'Export Failed', 'No model fitted. Fit a model in the Ortho tab first.')
+            return
+
+        # Check if image is loaded
+        src = self._test.get_image_data()
+        if src is None:
+            self._status.showMessage('No image data available')
+            QMessageBox.warning(self._parent, 'Export Failed', 'No image data available.')
+            return
+
+        # Ask for output file location
+        image_path = self._test.get_image_path()
+        default_name = image_path.name.replace('.', '_') + '_ortho.tif' if image_path else 'ortho_export.tif'
+        output_path, _ = QFileDialog.getSaveFileName(
+            self._parent,
+            'Export Ortho-Rectified GeoTIFF',
+            str(default_name),
+            'GeoTIFF (*.tif *.tiff)'
+        )
+
+        if not output_path:
+            return
+
+        try:
+            self._status.showMessage('Exporting ortho-rectified GeoTIFF...')
+
+            # Get output CRS from tools panel
+            tools_panel = self._sidebar.get_tools_panel()
+            panel_out_proj = tools_panel.get_output_projection()
+
+            # Compute CRS based on panel selection
+            if panel_out_proj == Output_Projection.WGS84:
+                output_crs = CRS.wgs84_geographic()
+            else:
+                # Compute UTM zone from extent centroid
+                extent = projector.warp_extent(src.shape[1], src.shape[0])
+                cx = (extent.min_point.longitude_deg + extent.max_point.longitude_deg) / 2
+                zone = int((cx + 180) / 6) + 1
+                hemisphere = 'N' if extent.min_point.latitude_deg >= 0 else 'S'
+                output_crs = CRS.utm_zone(zone, hemisphere)
+
+            # Warp the image
+            warped, extent = warp_image(src, projector, output_crs)
+
+            # Save as GeoTIFF
+            with rasterio.open(
+                output_path,
+                'w',
+                driver='GTiff',
+                height=warped.shape[0],
+                width=warped.shape[1],
+                count=warped.shape[2] if len(warped.shape) == 3 else 1,
+                dtype=warped.dtype,
+                crs=str(output_crs),
+                transform=from_bounds(
+                    extent.min_point.longitude_deg,
+                    extent.min_point.latitude_deg,
+                    extent.max_point.longitude_deg,
+                    extent.max_point.latitude_deg,
+                    warped.shape[1],
+                    warped.shape[0]
+                )
+            ) as dst:
+                if len(warped.shape) == 3:
+                    for i in range(warped.shape[2]):
+                        dst.write(warped[:, :, i], i + 1)
+                else:
+                    dst.write(warped, 1)
+
+            logging.info(f'Exported ortho-rectified GeoTIFF: {output_path}')
+            self._status.showMessage(f'Export complete: {output_path}')
+            QMessageBox.information(self._parent, 'Export Complete', f'Ortho-rectified GeoTIFF exported to:\n{output_path}')
+
+        except Exception as e:
+            logging.error(f'Export failed: {e}', exc_info=True)
+            self._status.showMessage(f'Export failed: {e}')
+            QMessageBox.critical(self._parent, 'Export Failed', f'Failed to export GeoTIFF:\n{e}')
 
     # ------------------------------------------------------------------
     # View mode toggle
@@ -276,12 +364,28 @@ class Ortho_Controller:
             # Set the projector
             self._set_projector(projector)
 
-            # Update UI to show model is available
-            tools_panel.update_fit_results(None, [])  # Clear residuals since we don't have them
-            status_panel.update_transform_status(f'{model_type.value.capitalize()} model loaded (sidecar)', None)
+            # Compute residuals using loaded projector and current GCPs
+            residuals = []
+            for gcp in self._gcp_proc.get_gcps():
+                if gcp.id in sidecar_gcp_ids:
+                    pred = projector.world_to_pixel(gcp.geographic)
+                    rms = ((pred.x_px - gcp.pixel.x_px) ** 2 + (pred.y_px - gcp.pixel.y_px) ** 2) ** 0.5
+                    residuals.append(GCP_Residual(
+                        gcp_id=gcp.id,
+                        actual_pixel=gcp.pixel,
+                        predicted_pixel=pred,
+                        rms_px=rms
+                    ))
+
+            # Calculate overall RMSE
+            rmse = np.sqrt(np.mean([r.rms_px ** 2 for r in residuals])) if residuals else None
+
+            # Update UI with computed residuals
+            tools_panel.update_fit_results(rmse, residuals)
+            status_panel.update_transform_status(f'{model_type.value.capitalize()} model loaded (sidecar)', rmse)
             tools_panel.set_sidecar_status(True, model_type.value)
 
-            logging.info(f'Loaded ortho model from sidecar for {image_path}')
+            logging.info(f'Loaded ortho model from sidecar for {image_path} with RMSE: {rmse:.3f}px' if rmse else f'Loaded ortho model from sidecar for {image_path}')
 
         except Exception as e:
             logging.error(f'Failed to load ortho model sidecar: {e}', exc_info=True)

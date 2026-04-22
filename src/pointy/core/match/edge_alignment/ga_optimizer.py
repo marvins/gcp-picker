@@ -105,7 +105,7 @@ def _affine_param_bounds(model: Affine, bounds_px: float = 50.0) -> list[tuple[f
         Pixel(x_px=w - 1, y_px=h - 1),
         Pixel(x_px=0,     y_px=h - 1),
     ]
-    geos = [model.source_to_geographic(c) for c in corners]
+    geos = [model.pixel_to_world(c) for c in corners]
     lons = [g.longitude_deg for g in geos]
     lats = [g.latitude_deg  for g in geos]
 
@@ -231,7 +231,7 @@ class GA_Optimizer:
                 gcp_errors = []
                 for gcp in manual_gcps:
                     # Project test pixel using temporary model
-                    projected_geo = temp_model.source_to_geographic(gcp.test_pixel)
+                    projected_geo = temp_model.pixel_to_world(gcp.pixel)
 
                     # Compute error in geographic coordinates (meters)
                     geo_error = np.sqrt(

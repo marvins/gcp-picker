@@ -273,7 +273,7 @@ class Edge_Aligner:
         geo_pts = []
         for px, py in test_pts:
             pixel = Pixel(x_px=px, y_px=py)
-            geo = model.source_to_geographic(pixel)
+            geo = model.pixel_to_world(pixel)
             geo_pts.append([geo.longitude_deg, geo.latitude_deg])
 
         geo_pts = np.array(geo_pts)
